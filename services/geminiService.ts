@@ -2,7 +2,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Food, Micronutrient, MealSuggestion, UserProfile, Recipe, Workout, Exercise } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Garante que o SDK não quebre o carregamento do módulo se a chave estiver indefinida
+const apiKey = typeof process !== 'undefined' ? process.env.API_KEY : '';
+const ai = new GoogleGenAI({ apiKey: apiKey || '' });
 
 const micronutrientProperties: Record<Micronutrient, { type: Type, description: string }> = {
     'Vitamina C': { type: Type.NUMBER, description: 'Vitamina C em mg' },
