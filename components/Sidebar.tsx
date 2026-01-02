@@ -11,8 +11,9 @@ import { TrophyIcon } from './icons/TrophyIcon';
 import { BadgeCheckIcon } from './icons/BadgeCheckIcon';
 import { DumbbellIcon } from './icons/DumbbellIcon';
 import { LinkIcon } from './icons/LinkIcon';
+import { UsersGroupIcon } from './icons/UsersGroupIcon';
 
-type View = 'dashboard' | 'community' | 'recipes' | 'reports' | 'workouts' | 'integrations';
+type View = 'dashboard' | 'community' | 'recipes' | 'reports' | 'workouts' | 'integrations' | 'friends';
 
 interface SidebarProps {
     isOpen: boolean;
@@ -88,6 +89,13 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, onClose, userProfile, current
                         icon={<HomeIcon className="w-6 h-6" />}
                         isActive={currentView === 'dashboard'}
                         onClick={() => onNavigate('dashboard')}
+                    />
+                    <NavItem 
+                        view="friends"
+                        label="Amigos"
+                        icon={<UsersGroupIcon className="w-6 h-6" />}
+                        isActive={currentView === 'friends'}
+                        onClick={() => onNavigate('friends')}
                     />
                     <NavItem 
                         view="workouts"

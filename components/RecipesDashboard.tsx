@@ -1,19 +1,63 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Food, Recipe as AiRecipe } from '../types';
 import RecipeDetailModal, { DisplayRecipe } from './RecipeDetailModal';
-import { getRecipes } from '../services/geminiService';
+import { getRecipes, generateAiImage } from '../services/geminiService';
 import { FireIcon } from './icons/FireIcon';
 import { ClockIcon } from './icons/ClockIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
+import { BookOpenIcon } from './icons/BookOpenIcon';
 
 interface RecipesDashboardProps {
   userProfile: UserProfile;
   onAddRecipeToLog: (foods: Food[], mealName: string) => void;
 }
 
+/**
+ * Componente para carregar a imagem da receita gerada por IA.
+ */
+const RecipeImage: React.FC<{ recipe: AiRecipe; className?: string }> = ({ recipe, className }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchImage = async () => {
+            setIsLoading(true);
+            try {
+                const url = await generateAiImage(recipe.imagePrompt || recipe.name, 'food');
+                setImageUrl(url);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchImage();
+    }, [recipe.imagePrompt, recipe.name]);
+
+    if (isLoading) {
+        return (
+            <div className={`flex items-center justify-center bg-gray-100 dark:bg-gray-800 animate-pulse ${className}`}>
+                <BookOpenIcon className="w-8 h-8 text-gray-300" />
+            </div>
+        );
+    }
+
+    if (!imageUrl) {
+        return (
+            <div className={`flex items-center justify-center bg-gray-200 dark:bg-gray-700 ${className}`}>
+                <BookOpenIcon className="w-8 h-8 text-gray-400" />
+            </div>
+        );
+    }
+
+    return <img src={imageUrl} alt={recipe.name} className={`${className} object-cover`} />;
+};
+
 const RecipesDashboard: React.FC<RecipesDashboardProps> = ({ userProfile, onAddRecipeToLog }) => {
-  const [selectedRecipe, setSelectedRecipe] = useState<DisplayRecipe | null>(null);
-  const [generatedRecipes, setGeneratedRecipes] = useState<DisplayRecipe[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = useState<AiRecipe | null>(null);
+  const [generatedRecipes, setGeneratedRecipes] = useState<AiRecipe[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preferences, setPreferences] = useState('');
@@ -31,15 +75,11 @@ const RecipesDashboard: React.FC<RecipesDashboardProps> = ({ userProfile, onAddR
     setGeneratedRecipes([]);
 
     try {
-        const aiRecipes: AiRecipe[] = await getRecipes(activeGoal, preferences, userProfile);
+        const aiRecipes = await getRecipes(activeGoal, preferences, userProfile);
         if (aiRecipes.length === 0) {
             setError('Não foi possível gerar receitas. Tente ajustar suas preferências ou tente novamente mais tarde.');
         } else {
-            const displayRecipes: DisplayRecipe[] = aiRecipes.map(recipe => ({
-                ...recipe,
-                imageUrl: `https://source.unsplash.com/400x300/?${encodeURIComponent(recipe.imagePrompt)}`
-            }));
-            setGeneratedRecipes(displayRecipes);
+            setGeneratedRecipes(aiRecipes);
         }
     } catch (e) {
         setError('Ocorreu um erro ao buscar as receitas. Por favor, tente novamente.');
@@ -123,7 +163,7 @@ const RecipesDashboard: React.FC<RecipesDashboardProps> = ({ userProfile, onAddR
               tabIndex={0}
               onKeyPress={(e) => (e.key === 'Enter' || e.key === ' ') && setSelectedRecipe(recipe)}
             >
-              <img src={recipe.imageUrl} alt={recipe.name} className="w-full h-40 object-cover" />
+              <RecipeImage recipe={recipe} className="w-full h-40" />
               <div className="p-4">
                 <span className="px-2 py-0.5 text-xs font-semibold text-white bg-accent-green rounded-full">{recipe.category}</span>
                 <h3 className="font-semibold text-md text-light-text dark:text-dark-text truncate mt-2" title={recipe.name}>{recipe.name}</h3>

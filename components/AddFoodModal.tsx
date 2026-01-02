@@ -166,7 +166,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     }
   };
 
-  // Library Management Actions
   const handleDeleteFromLibrary = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     if (window.confirm('Tem certeza que deseja excluir este alimento da biblioteca permanentemente?')) {
@@ -227,7 +226,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-light-card dark:bg-dark-card rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+      <div className="bg-light-card dark:bg-dark-card rounded-xl shadow-xl w-full max-w-lg h-full max-h-[95dvh] flex flex-col overflow-hidden animate-fade-in-up">
         <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
           <h2 className="text-xl font-bold">Adicionar em {mealName}</h2>
           <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600">
@@ -244,7 +243,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </div>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-grow">
+        <div className="p-4 overflow-y-auto flex-grow scrollbar-hide">
           {activeTab === 'library' && (
             <div className="space-y-4">
                <div className="flex gap-2">
@@ -268,7 +267,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                </div>
 
                <div className="border dark:border-gray-700 rounded-md overflow-hidden bg-gray-50 dark:bg-gray-900/20">
-                    <ul className="divide-y dark:divide-gray-600 max-h-72 overflow-y-auto">
+                    <ul className="divide-y dark:divide-gray-600 max-h-96 overflow-y-auto">
                         {filteredLibrary.map(food => (
                         <li 
                             key={food.id} 
@@ -292,14 +291,12 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                                 <button 
                                     onClick={(e) => handleEditInLibrary(e, food)} 
                                     className="p-1.5 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition"
-                                    title="Editar Alimento"
                                 >
                                     <PencilIcon className="w-4 h-4" />
                                 </button>
                                 <button 
                                     onClick={(e) => handleDeleteFromLibrary(e, food.id)} 
                                     className="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
-                                    title="Excluir Alimento"
                                 >
                                     <TrashIcon />
                                 </button>
@@ -334,12 +331,12 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
              isCameraOpen ? (
                 <CameraCapture onCapture={handlePhotoTaken} onClose={() => setIsCameraOpen(false)} />
             ) : (
-                <div className="text-center space-y-4">
-                    <p className="text-sm">Use a IA para identificar alimentos a partir de uma foto.</p>
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <div className="text-center space-y-4 py-4">
+                    <p className="text-sm text-gray-500">Use a IA para identificar alimentos a partir de uma foto.</p>
+                    <div className="flex flex-col gap-3">
                         <button 
                             onClick={() => setIsCameraOpen(true)}
-                            className="flex-1 flex items-center justify-center space-x-2 bg-accent-blue text-white px-6 py-3 rounded-md font-semibold hover:bg-blue-600 transition"
+                            className="w-full flex items-center justify-center space-x-2 bg-accent-blue text-white px-6 py-4 rounded-xl font-bold hover:bg-blue-600 transition shadow-lg"
                         >
                             <CameraIcon />
                             <span>Tirar Foto</span>
@@ -354,7 +351,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                         />
                         <label 
                             htmlFor="photo-upload" 
-                            className="flex-1 flex items-center justify-center space-x-2 cursor-pointer bg-accent-green text-white px-6 py-3 rounded-md font-semibold hover:bg-green-600 transition"
+                            className="w-full flex items-center justify-center space-x-2 cursor-pointer bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white px-6 py-4 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition"
                         >
                             <ImageIcon />
                             <span>Enviar da Galeria</span>
@@ -368,23 +365,26 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
             isScanning ? (
                 <BarcodeScanner onScan={handleBarcodeScan} onClose={() => setIsScanning(false)} />
             ) : (
-                <div className="text-center">
-                    <p className="mb-4 text-sm">Escaneie o código de barras de produtos industrializados brasileiros.</p>
-                    <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white px-6 py-3 rounded-md font-semibold hover:bg-green-600 transition inline-flex items-center justify-center">
-                        <ScannerIcon className="h-5 w-5" />
+                <div className="text-center py-6">
+                    <p className="mb-4 text-sm text-gray-500">Escaneie o código de barras de produtos industrializados.</p>
+                    <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white px-6 py-4 rounded-xl font-bold hover:bg-green-600 transition inline-flex items-center justify-center w-full shadow-lg">
+                        <ScannerIcon className="h-6 w-6" />
                         <span className="ml-2">Abrir Scanner</span>
                     </button>
                 </div>
             )
           )}
 
-          {isLoading && <div className="text-center p-8">Carregando...</div>}
-          {error && <div className="text-center p-4 text-red-500">{error}</div>}
+          {isLoading && <div className="text-center p-8 flex flex-col items-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-green mb-2"></div>
+            <p className="text-sm font-semibold">Analisando dados...</p>
+          </div>}
+          {error && <div className="text-center p-4 text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/10 rounded-lg">{error}</div>}
 
           {(results.length > 0 && activeTab !== 'library') && (
             <div className="mt-4 space-y-4">
-              <h3 className="font-semibold text-sm">Resultados IA:</h3>
-              <ul className="divide-y dark:divide-gray-600 max-h-72 overflow-y-auto border dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-800/40">
+              <h3 className="font-bold text-xs uppercase tracking-wider text-gray-400">Resultados Identificados:</h3>
+              <ul className="divide-y dark:divide-gray-600 border dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/40 overflow-hidden">
                 {results.map(food => (
                   <li 
                     key={food.id} 
@@ -396,16 +396,11 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {food.servingSize}
                       </p>
-                      <div className="flex items-center space-x-4 text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                        <span className="font-semibold text-red-500">P: {Math.round(food.protein)}g</span>
-                        <span className="font-semibold text-orange-500">C: {Math.round(food.carbs)}g</span>
-                        <span className="font-semibold text-yellow-500">F: {Math.round(food.fat)}g</span>
-                      </div>
                     </div>
                     <div className="flex items-center space-x-4 ml-4">
                       <div className="text-right">
-                          <p className="font-bold text-xl text-accent-green">{Math.round(food.calories)}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1">kcal</p>
+                          <p className="font-bold text-lg text-accent-green">{Math.round(food.calories)}</p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-400 -mt-1 uppercase font-bold">kcal</p>
                       </div>
                       <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0 ${selectedFoodIds.has(food.id) ? 'bg-accent-green border-accent-green' : 'border-gray-300 dark:border-gray-500'}`}>
                         {selectedFoodIds.has(food.id) && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
@@ -416,41 +411,33 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
               </ul>
             </div>
           )}
-
-          {selectionSummary && (
-              <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-800 rounded-lg animate-slide-in-right">
-                  <h4 className="font-semibold text-xs text-center mb-2">Resumo da Seleção</h4>
-                  <div className="grid grid-cols-4 gap-1 text-center">
-                      <div className="flex flex-col items-center">
-                          <FireIcon className="w-4 h-4 text-orange-500" />
-                          <span className="font-bold text-xs">{Math.round(selectionSummary.calories)}</span>
-                          <span className="text-[8px] text-gray-400 uppercase">kcal</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                          <BoltIcon className="w-4 h-4 text-red-500" />
-                          <span className="font-bold text-xs">{Math.round(selectionSummary.protein)}g</span>
-                          <span className="text-[8px] text-gray-400 uppercase">Prot</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                          <LeafIcon className="w-4 h-4 text-green-500" />
-                          <span className="font-bold text-xs">{Math.round(selectionSummary.carbs)}g</span>
-                          <span className="text-[8px] text-gray-400 uppercase">Carb</span>
-                      </div>
-                      <div className="flex flex-col items-center">
-                          <OilIcon className="w-4 h-4 text-yellow-500" />
-                          <span className="font-bold text-xs">{Math.round(selectionSummary.fat)}g</span>
-                          <span className="text-[8px] text-gray-400 uppercase">Gord</span>
-                      </div>
-                  </div>
-              </div>
-          )}
         </div>
 
-        <div className="p-4 border-t dark:border-gray-700">
+        <div className="p-4 border-t dark:border-gray-700 bg-white dark:bg-dark-card shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+            {selectionSummary && (
+                <div className="mb-4 grid grid-cols-4 gap-2 text-center">
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Kcal</span>
+                        <span className="font-bold text-sm text-accent-green">{Math.round(selectionSummary.calories)}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Prot</span>
+                        <span className="font-bold text-sm text-red-500">{Math.round(selectionSummary.protein)}g</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Carb</span>
+                        <span className="font-bold text-sm text-orange-500">{Math.round(selectionSummary.carbs)}g</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase">Gord</span>
+                        <span className="font-bold text-sm text-yellow-500">{Math.round(selectionSummary.fat)}g</span>
+                    </div>
+                </div>
+            )}
             <button
                 onClick={handleAddSelected}
                 disabled={selectedFoodIds.size === 0}
-                className="w-full bg-accent-green text-white p-3 rounded-lg font-semibold hover:bg-green-600 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed"
+                className="w-full bg-accent-green text-white p-4 rounded-xl font-bold hover:bg-green-600 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed shadow-lg active:scale-[0.98] transform"
             >
                 Adicionar {selectedFoodIds.size} {selectedFoodIds.size === 1 ? 'Item' : 'Itens'}
             </button>

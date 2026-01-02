@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Food, MealCategory, Recipe as AiRecipe } from '../types';
 import { XIcon } from './icons/XIcon';
 import { FireIcon } from './icons/FireIcon';
@@ -8,17 +9,56 @@ import { PlusIcon } from './icons/PlusIcon';
 import { BoltIcon } from './icons/BoltIcon';
 import { LeafIcon } from './icons/LeafIcon';
 import { OilIcon } from './icons/OilIcon';
+import { generateAiImage } from '../services/geminiService';
+import { BookOpenIcon } from './icons/BookOpenIcon';
 
 export interface DisplayRecipe extends AiRecipe {
-    imageUrl: string;
+    imageUrl?: string;
 }
 
 interface RecipeDetailModalProps {
-    recipe: DisplayRecipe;
+    recipe: AiRecipe;
     onClose: () => void;
     onAddRecipeToLog: (foods: Food[], mealName: string) => void;
     userProfile: UserProfile;
 }
+
+const RecipeDetailImage: React.FC<{ recipe: AiRecipe }> = ({ recipe }) => {
+    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchImage = async () => {
+            setIsLoading(true);
+            try {
+                const url = await generateAiImage(recipe.imagePrompt || recipe.name, 'food');
+                setImageUrl(url);
+            } catch (err) {
+                console.error(err);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        fetchImage();
+    }, [recipe.imagePrompt, recipe.name]);
+
+    return (
+        <div className="w-full h-56 relative overflow-hidden bg-gray-100 dark:bg-gray-800">
+            {isLoading ? (
+                <div className="w-full h-full flex items-center justify-center animate-pulse">
+                    <BookOpenIcon className="w-12 h-12 text-gray-300" />
+                </div>
+            ) : imageUrl ? (
+                <img src={imageUrl} alt={recipe.name} className="w-full h-full object-cover" />
+            ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                    <BookOpenIcon className="w-12 h-12 text-gray-400" />
+                </div>
+            )}
+        </div>
+    );
+};
 
 const RecipeDetailModal: React.FC<RecipeDetailModalProps> = ({ recipe, onClose, onAddRecipeToLog, userProfile }) => {
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -34,7 +74,7 @@ const RecipeDetailModal: React.FC<RecipeDetailModalProps> = ({ recipe, onClose, 
             <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4" onClick={onClose}>
                 <div className="bg-light-card dark:bg-dark-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
                     <div className="relative">
-                        <img src={recipe.imageUrl} alt={recipe.name} className="w-full h-56 object-cover rounded-t-xl" />
+                        <RecipeDetailImage recipe={recipe} />
                         <button onClick={onClose} className="absolute top-4 right-4 p-1.5 bg-black/50 text-white rounded-full hover:bg-black/75 transition-colors">
                             <XIcon />
                         </button>

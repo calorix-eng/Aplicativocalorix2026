@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { UserProfile, ActivityLevel } from '../types';
 import { LogoIcon } from './icons/LogoIcon';
@@ -74,6 +75,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
     age: '',
     sex: '' as 'male' | 'female' | 'prefer_not_to_say' | '',
     weight: '',
+    targetWeight: '',
     height: '',
     coachId: 'leo' as 'leo',
     goal: 'maintain' as 'lose' | 'maintain' | 'gain',
@@ -98,12 +100,10 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
     const { name, value } = e.target;
     
     if (name === 'age' || name === 'height') {
-      // Allow only non-negative integers.
       if (value === '' || /^\d+$/.test(value)) {
         setFormData(prev => ({ ...prev, [name]: value }));
       }
-    } else if (name === 'weight') {
-      // Allow only non-negative numbers, including decimals.
+    } else if (name === 'weight' || name === 'targetWeight') {
       if (value === '' || /^\d*\.?\d*$/.test(value)) {
         setFormData(prev => ({ ...prev, [name]: value }));
       }
@@ -113,7 +113,16 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
   };
 
   const handleCardSelection = (name: keyof typeof formData, value: string) => {
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+        const next = { ...prev, [name]: value };
+        // Pre-fill target weight based on goal
+        if (name === 'goal' && prev.weight) {
+            if (value === 'lose') next.targetWeight = (parseFloat(prev.weight) - 5).toString();
+            else if (value === 'gain') next.targetWeight = (parseFloat(prev.weight) + 5).toString();
+            else next.targetWeight = prev.weight;
+        }
+        return next;
+    });
   };
 
 
@@ -141,6 +150,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
       age: parseInt(formData.age),
       sex: formData.sex as 'male' | 'female' | 'prefer_not_to_say',
       weight: parseFloat(formData.weight),
+      targetWeight: formData.targetWeight ? parseFloat(formData.targetWeight) : parseFloat(formData.weight),
       height: parseFloat(formData.height),
       activityLevel: formData.activityLevel,
       goal: formData.goal,
@@ -165,7 +175,6 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
       savedPosts: [],
       challengeProgress: undefined,
       completedChallenges: [],
-      // FIX: Added 'integrations' property to satisfy UserProfile interface requirement.
       integrations: { connectedServices: [], syncHistory: [] },
       mealCategories: [
         { id: '1', name: 'Café da Manhã' },
@@ -228,7 +237,7 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
                     <input type="number" name="age" id="age" value={formData.age} onChange={handleChange} required className={inputClasses} placeholder="Ex: 25" />
                 </div>
                 <div>
-                    <label htmlFor="weight" className={labelClasses}>Peso (kg)</label>
+                    <label htmlFor="weight" className={labelClasses}>Peso Atual (kg)</label>
                     <input type="number" name="weight" id="weight" step="0.1" value={formData.weight} onChange={handleChange} required className={inputClasses} placeholder="Ex: 70.5"/>
                 </div>
             </div>
@@ -350,15 +359,35 @@ const Onboarding: React.FC<OnboardingProps> = ({ onProfileCreate, defaultName })
                         <option value="very">Muito Ativo (exercício pesado 6-7 dias/semana)</option>
                         <option value="extra">Extremamente Ativo (trabalho físico + exercício)</option>
                     </select>
-                     <p className="text-xs text-gray-500 mt-1">Considere suas atividades diárias além do esporte.</p>
                 </div>
-                <div>
-                    <label htmlFor="goal" className={labelClasses}>Objetivo Principal</label>
-                    <select name="goal" id="goal" value={formData.goal} onChange={handleChange} className={inputClasses}>
-                        <option value="lose">Perder Peso</option>
-                        <option value="maintain">Manter Peso</option>
-                        <option value="gain">Ganhar Massa Muscular</option>
-                    </select>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label htmlFor="goal" className={labelClasses}>Objetivo Principal</label>
+                        <select name="goal" id="goal" value={formData.goal} onChange={handleChange} className={inputClasses}>
+                            <option value="lose">Perder Peso</option>
+                            <option value="maintain">Manter Peso</option>
+                            <option value="gain">Ganhar Massa Muscular</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="targetWeight" className={labelClasses}>Peso Meta (kg)</label>
+                        <input
+                            type="number"
+                            name="targetWeight"
+                            id="targetWeight"
+                            step="0.1"
+                            value={formData.targetWeight}
+                            onChange={handleChange}
+                            className={inputClasses}
+                            placeholder="Ex: 65.0"
+                        />
+                         {formData.goal === 'lose' && formData.targetWeight && parseFloat(formData.targetWeight) >= parseFloat(formData.weight) && (
+                            <p className="text-[10px] text-orange-500 mt-1">Para emagrecer, sua meta deve ser menor que o peso atual.</p>
+                        )}
+                        {formData.goal === 'gain' && formData.targetWeight && parseFloat(formData.targetWeight) <= parseFloat(formData.weight) && (
+                            <p className="text-[10px] text-orange-500 mt-1">Para ganhar massa, sua meta deve ser maior que o peso atual.</p>
+                        )}
+                    </div>
                 </div>
                 
                 <WaterGoalInput 

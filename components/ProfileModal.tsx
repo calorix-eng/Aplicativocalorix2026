@@ -50,6 +50,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         age: userProfile.age.toString(),
         sex: userProfile.sex,
         weight: userProfile.weight.toString(),
+        targetWeight: (userProfile.targetWeight ?? userProfile.weight).toString(),
         height: userProfile.height.toString(),
         activityLevel: userProfile.activityLevel,
         practicesSports: userProfile.practicesSports ? 'yes' : 'no',
@@ -63,7 +64,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         customProtein: userProfile.customGoals?.protein?.toString() ?? '',
         customCarbs: userProfile.customGoals?.carbs?.toString() ?? '',
         customFat: userProfile.customGoals?.fat?.toString() ?? '',
-        // FIX: Using only connectedServices to manage integrations consistently
         connectedServices: userProfile.integrations.connectedServices || [],
         coachName: userProfile.coach?.name || 'Leo',
         coachAvatar: userProfile.coach?.avatar || '',
@@ -186,6 +186,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
             avatar: formData.avatar,
             age: parseInt(formData.age),
             weight: parseFloat(formData.weight),
+            targetWeight: parseFloat(formData.targetWeight),
             height: parseFloat(formData.height),
             sex: formData.sex as 'male' | 'female' | 'prefer_not_to_say',
             activityLevel: formData.activityLevel as ActivityLevel,
@@ -202,7 +203,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
             units: formData.units as 'metric' | 'imperial',
             customWaterGoal: parseInt(formData.customWaterGoal),
             customGoals: finalCustomGoals,
-            // FIX: Merge with current integrations metrics/history to avoid loss
             integrations: {
                 ...userProfile.integrations,
                 connectedServices: formData.connectedServices
@@ -318,7 +318,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div><label htmlFor="weight" className={labelClasses}>Peso ({formData.units === 'metric' ? 'kg' : 'lbs'})</label><input type="number" name="weight" id="weight" step="0.1" value={formData.weight} onChange={handleChange} className={inputClasses} required /></div>
+                                    <div><label htmlFor="weight" className={labelClasses}>Peso Atual ({formData.units === 'metric' ? 'kg' : 'lbs'})</label><input type="number" name="weight" id="weight" step="0.1" value={formData.weight} onChange={handleChange} className={inputClasses} required /></div>
                                     <div><label htmlFor="height" className={labelClasses}>Altura ({formData.units === 'metric' ? 'cm' : 'in'})</label><input type="number" name="height" id="height" value={formData.height} onChange={handleChange} className={inputClasses} required /></div>
                                 </div>
                                 
@@ -471,28 +471,30 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
                         {activeTab === 'goals' && (
                             <div className="space-y-4">
                                 <h3 className="text-lg font-bold">Metas Nutricionais</h3>
-                                <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    Deixe em branco para usar as metas calculadas pela IA. Preencha para definir metas personalizadas.
-                                </p>
-                                
-                                <div>
-                                    <label htmlFor="customCalories" className={labelClasses}>Calorias (kcal)</label>
-                                    <input type="number" name="customCalories" id="customCalories" value={formData.customCalories} onChange={handleChange} className={inputClasses} placeholder={`Calculado: ${userProfile.goals.calories}`} />
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label htmlFor="customCalories" className={labelClasses}>Calorias (kcal)</label>
+                                        <input type="number" name="customCalories" id="customCalories" value={formData.customCalories} onChange={handleChange} className={inputClasses} placeholder={`Calculado: ${userProfile.goals.calories}`} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="targetWeight" className={labelClasses}>Peso Meta (kg)</label>
+                                        <input type="number" name="targetWeight" id="targetWeight" step="0.1" value={formData.targetWeight} onChange={handleChange} className={inputClasses} />
+                                    </div>
                                 </div>
 
-                                <div>
-                                    <label htmlFor="customProtein" className={labelClasses}>Proteína (g)</label>
-                                    <input type="number" name="customProtein" id="customProtein" value={formData.customProtein} onChange={handleChange} className={inputClasses} placeholder={`Calculado: ${userProfile.goals.protein}`} />
-                                </div>
-
-                                <div>
-                                    <label htmlFor="customCarbs" className={labelClasses}>Carboidratos (g)</label>
-                                    <input type="number" name="customCarbs" id="customCarbs" value={formData.customCarbs} onChange={handleChange} className={inputClasses} placeholder={`Calculado: ${userProfile.goals.carbs}`} />
-                                </div>
-
-                                <div>
-                                    <label htmlFor="customFat" className={labelClasses}>Gordura (g)</label>
-                                    <input type="number" name="customFat" id="customFat" value={formData.customFat} onChange={handleChange} className={inputClasses} placeholder={`Calculado: ${userProfile.goals.fat}`} />
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div>
+                                        <label htmlFor="customProtein" className={labelClasses}>Proteína (g)</label>
+                                        <input type="number" name="customProtein" id="customProtein" value={formData.customProtein} onChange={handleChange} className={inputClasses} placeholder={`${userProfile.goals.protein}g`} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="customCarbs" className={labelClasses}>Carboidratos (g)</label>
+                                        <input type="number" name="customCarbs" id="customCarbs" value={formData.customCarbs} onChange={handleChange} className={inputClasses} placeholder={`${userProfile.goals.carbs}g`} />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="customFat" className={labelClasses}>Gordura (g)</label>
+                                        <input type="number" name="customFat" id="customFat" value={formData.customFat} onChange={handleChange} className={inputClasses} placeholder={`${userProfile.goals.fat}g`} />
+                                    </div>
                                 </div>
                                 
                                 <div className="border-t border-gray-200 dark:border-gray-700 my-4"></div>

@@ -29,7 +29,8 @@ interface DashboardProps {
   selectedDateLog: DailyLog;
   dailyLogs: Record<string, Omit<DailyLog, 'micronutrientIntake'>>;
   onAddFoodClick: (meal: MealCategory) => void;
-  onAddFoodToMeal: (food: Food, mealName: string) => void;
+  // FIX: Updated to accept Food[] to maintain consistency with App.tsx and AddFoodModal logic.
+  onAddFoodToMeal: (foods: Food[], mealName: string) => void;
   onDeleteFood: (mealName: string, foodId: string) => void;
   onUpdateGoal: (newGoal: 'lose' | 'maintain' | 'gain') => void;
   onSetWater: (amount: number) => void;
@@ -105,12 +106,15 @@ const Dashboard: React.FC<DashboardProps> = ({
   
   return (
     <div className="space-y-6">
-       {showCoach && userProfile.coach && (
+       {/* AI Coach Leo positioned prominently at the top */}
+       {userProfile.coach && (
             <MotivationalCoach
                 userProfile={userProfile}
                 onDismiss={onDismissCoach}
+                isInitialView={true}
             />
         )}
+
        <Calendar 
             selectedDate={selectedDate}
             onDateChange={onDateChange}

@@ -1,228 +1,89 @@
 
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { Post, UserProfile, AuthUser, PostCategory, ReactionType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Post, UserProfile, AuthUser, PostCategory } from '../types';
+import { useCommunityStore } from '../store/communityStore';
 import CreatePost from './CreatePost';
 import PostCard from './PostCard';
 import CommunitySidebar from './CommunitySidebar';
 import CommunityGuidelines from './CommunityGuidelines';
+import { UserIcon } from './icons/UserIcon';
+import { XIcon } from './icons/XIcon';
 
 type CommunityTab = 'home' | 'notifications' | 'saved' | 'guidelines' | 'my-posts';
 type PostFilter = PostCategory | 'all' | 'following';
 
 interface CommunityFeedProps {
-    posts: Post[];
     currentUserProfile: UserProfile;
     currentUserAuth: AuthUser;
-    onCreatePost: (text: string, category: PostCategory, imageUrl?: string, videoUrl?: string) => void;
-    onReactToPost: (postId: string, reaction: ReactionType) => void;
-    onAddComment: (postId: string, commentText: string) => void;
     onFollowUser: (authorEmail: string, authorId: string) => void;
     onSavePost: (postId: string) => void;
     onSharePost: (text: string, imageUrl?: string, videoUrl?: string) => void;
 }
 
 const CommunityFeed: React.FC<CommunityFeedProps> = ({ 
-    posts, 
     currentUserProfile,
     currentUserAuth,
-    onCreatePost,
-    onReactToPost,
-    onAddComment,
     onFollowUser,
     onSavePost,
     onSharePost,
 }) => {
+    const { posts, addPost, hasNewPosts, acknowledgeNewPosts } = useCommunityStore();
     const [activeTab, setActiveTab] = useState<CommunityTab>('home');
     const [activeFilter, setActiveFilter] = useState<PostFilter>('all');
+    const [showFollowingList, setShowFollowingList] = useState(false);
 
-    // --- Infinite Scroll State ---
-    const POSTS_PER_PAGE = 5;
-    const [page, setPage] = useState(1);
-    const [isLoading, setIsLoading] = useState(false);
-    const observer = useRef<IntersectionObserver>(null);
+    const handleCreatePost = (text: string, category: PostCategory, imageUrl?: string, videoUrl?: string) => {
+        const newPost: Post = {
+            id: crypto.randomUUID(),
+            author: {
+                uid: currentUserAuth.uid,
+                name: currentUserProfile.name,
+                email: currentUserAuth.email,
+                avatar: currentUserProfile.avatar
+            },
+            text,
+            imageUrl,
+            videoUrl,
+            timestamp: Date.now(),
+            category,
+            reactions: { like: [] },
+            comments: []
+        };
+        addPost(newPost);
+    };
 
-    // When filter or main posts array changes, reset the page number
-    useEffect(() => {
-        setPage(1);
-    }, [activeFilter, posts, activeTab]);
+    const myPostsCount = posts.filter(p => p.author.email === currentUserAuth.email).length;
+    const followingCount = currentUserProfile.following?.length || 0;
+    // Simulated followers count for visual purposes in a local mock environment
+    const followersCount = Math.floor((myPostsCount * 2.5) + (followingCount * 0.5));
 
-    const savedPosts = useMemo(() => posts.filter(post => currentUserProfile.savedPosts?.includes(post.id)), [posts, currentUserProfile.savedPosts]);
-    const myPosts = useMemo(() => posts.filter(post => post.author.email === currentUserAuth.email), [posts, currentUserAuth.email]);
-    
-    const filteredPosts = useMemo(() => {
-        let base = posts;
-        if (activeFilter === 'following') {
-            base = posts.filter(post => currentUserProfile.following?.includes(post.author.email));
-        } else if (activeFilter !== 'all') {
-            base = posts.filter(post => post.category === activeFilter as PostCategory);
-        }
-        return base;
-    }, [posts, activeFilter, currentUserProfile.following]);
-    
-    // The source of truth for the currently active list
-    const activePostList = useMemo(() => {
-        if (activeTab === 'saved') return savedPosts;
-        if (activeTab === 'my-posts') return myPosts;
-        return filteredPosts;
-    }, [activeTab, savedPosts, myPosts, filteredPosts]);
+    const filteredPosts = posts.filter(post => {
+        if (activeTab === 'saved') return currentUserProfile.savedPosts?.includes(post.id);
+        if (activeTab === 'my-posts') return post.author.email === currentUserAuth.email;
+        if (activeFilter === 'following') return currentUserProfile.following?.includes(post.author.email);
+        if (activeFilter !== 'all') return post.category === activeFilter;
+        return true;
+    });
 
-    // Paginated list for display
-    const displayedPosts = useMemo(() => {
-        return activePostList.slice(0, page * POSTS_PER_PAGE);
-    }, [activePostList, page]);
-
-    const hasMore = useMemo(() => displayedPosts.length < activePostList.length, [displayedPosts, activePostList]);
-
-    // The callback for the intersection observer
-    const lastPostElementRef = useCallback((node: HTMLDivElement | null) => {
-        if (isLoading) return;
-        if (observer.current) observer.current.disconnect();
-
-        observer.current = new IntersectionObserver(entries => {
-            if (entries[0].isIntersecting && hasMore) {
-                setIsLoading(true);
-                // Simulate loading more content
-                setTimeout(() => {
-                    setPage(prevPage => prevPage + 1);
-                    setIsLoading(false);
-                }, 500);
-            }
-        });
-
-        if (node) observer.current.observe(node);
-    }, [isLoading, hasMore]);
-    
     const FilterButton: React.FC<{ filter: PostFilter, label: string }> = ({ filter, label }) => {
       const isActive = activeFilter === filter;
       return (
         <button
           onClick={() => setActiveFilter(filter)}
-          className={`px-4 py-2 text-sm font-bold rounded-full transition flex-shrink-0 whitespace-nowrap ${isActive ? 'bg-accent-green text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+          className={`px-4 py-2 text-sm font-bold rounded-2xl transition-all whitespace-nowrap ${isActive ? 'bg-accent-green text-white shadow-lg scale-105' : 'bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
         >
           {label}
         </button>
       )
-    }
-
-    const renderMainContent = () => {
-        switch (activeTab) {
-            case 'guidelines':
-                return <CommunityGuidelines />;
-            
-            case 'notifications':
-                return (
-                    <div className="text-center py-16 bg-light-card dark:bg-dark-card rounded-xl shadow-sm border border-gray-100 dark:border-gray-800">
-                        <h3 className="text-xl font-semibold">Nenhuma notificação por aqui</h3>
-                        <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm">Suas notificações sobre reações, comentários e novos seguidores aparecerão aqui.</p>
-                    </div>
-                );
-
-            case 'my-posts':
-            case 'saved':
-            case 'home':
-            default:
-                 const postsToRender = displayedPosts;
-                 let noPostsMessage = { title: 'Nenhuma publicação encontrada', body: 'Tente um filtro diferente ou seja o primeiro a postar!' };
-                 
-                 if (activeTab === 'saved') {
-                    noPostsMessage = { title: 'Nenhuma publicação salva', body: 'Você ainda não salvou nenhuma publicação.' };
-                 } else if (activeTab === 'my-posts') {
-                    noPostsMessage = { title: 'Você ainda não postou nada', body: 'Compartilhe sua jornada com a comunidade na aba Página Inicial!' };
-                 } else if (activeFilter === 'following') {
-                    noPostsMessage = { title: 'Feed vazio', body: 'Você ainda não segue ninguém ou as pessoas que você segue ainda não postaram nada.' };
-                 }
-
-                return (
-                    <div className="space-y-6">
-                        {activeTab === 'home' && (
-                            <>
-                                <CreatePost userProfile={currentUserProfile} onCreatePost={onCreatePost} />
-                                <div className="flex items-center space-x-2 overflow-x-auto pb-4 scrollbar-hide">
-                                   <FilterButton filter="all" label="🚀 Todos" />
-                                   <FilterButton filter="following" label="👥 Seguindo" />
-                                   <FilterButton filter="motivation" label="💪 Motivação" />
-                                   <FilterButton filter="recipe" label="🍳 Receitas" />
-                                   <FilterButton filter="tip" label="💡 Dicas" />
-                                </div>
-                            </>
-                        )}
-
-                        {activeTab === 'my-posts' && postsToRender.length > 0 && (
-                            <div className="bg-accent-green/5 p-6 rounded-2xl border border-accent-green/10 mb-4 flex items-center justify-between">
-                                <div>
-                                    <h3 className="font-bold text-accent-green text-lg">Seu Perfil na Comunidade</h3>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400">Você já compartilhou {myPosts.length} postagens inspiradoras.</p>
-                                </div>
-                                <div className="w-14 h-14 bg-white dark:bg-gray-800 rounded-2xl flex items-center justify-center shadow-sm">
-                                    <span className="text-2xl font-bold text-accent-green">🔥</span>
-                                </div>
-                            </div>
-                        )}
-
-                        {postsToRender.length > 0 ? (
-                            <div className="space-y-6">
-                                {postsToRender.map((post) => (
-                                    <PostCard 
-                                        key={post.id}
-                                        post={post}
-                                        currentUserProfile={currentUserProfile}
-                                        currentUserAuth={currentUserAuth}
-                                        onReactToPost={onReactToPost}
-                                        onAddComment={onAddComment}
-                                        onFollowUser={onFollowUser}
-                                        onSavePost={onSavePost}
-                                        onSharePost={onSharePost}
-                                    />
-                                ))}
-                            </div>
-                        ) : !isLoading ? (
-                            <div className="text-center py-20 bg-light-card dark:bg-dark-card rounded-2xl shadow-sm border-2 border-dashed border-gray-100 dark:border-gray-800 px-6">
-                                <div className="bg-gray-50 dark:bg-gray-800 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <span className="text-3xl">🏜️</span>
-                                </div>
-                                <h3 className="text-xl font-bold text-gray-800 dark:text-white">{noPostsMessage.title}</h3>
-                                <p className="text-gray-500 dark:text-gray-400 mt-2 max-w-xs mx-auto text-sm">{noPostsMessage.body}</p>
-                                {activeFilter === 'following' && (
-                                    <button 
-                                        onClick={() => setActiveFilter('all')}
-                                        className="mt-6 text-accent-green font-bold hover:underline"
-                                    >
-                                        Explorar novos usuários
-                                    </button>
-                                )}
-                            </div>
-                        ) : null}
-
-                        {/* Infinite scroll markers */}
-                        <div ref={lastPostElementRef} className="h-4" />
-                        {isLoading && (
-                            <div className="flex justify-center p-8">
-                                <div className="animate-spin rounded-full h-8 w-8 border-4 border-accent-green border-t-transparent"></div>
-                            </div>
-                        )}
-                        {!hasMore && activePostList.length > POSTS_PER_PAGE && (
-                            <div className="text-center p-8 text-gray-400 dark:text-gray-600 text-sm font-medium">
-                                <p>✨ Você explorou tudo por aqui.</p>
-                            </div>
-                        )}
-                    </div>
-                );
-        }
-    };
-
-    const getTitleForTab = (tab: CommunityTab): string => {
-        switch (tab) {
-            case 'home': return 'Comunidade';
-            case 'notifications': return 'Notificações';
-            case 'saved': return 'Publicações Salvas';
-            case 'my-posts': return 'Meu Perfil';
-            case 'guidelines': return ''; 
-            default: return 'Comunidade';
-        }
     };
 
     return (
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8 px-2 sm:px-6"
+        >
             <aside className="lg:col-span-1 hidden lg:block">
                 <CommunitySidebar 
                     activeTab={activeTab} 
@@ -230,18 +91,169 @@ const CommunityFeed: React.FC<CommunityFeedProps> = ({
                     unreadCount={0} 
                 />
             </aside>
+
             <main className="lg:col-span-3 space-y-6">
-                <div className="flex items-center justify-between">
-                    {getTitleForTab(activeTab) && (
-                        <h1 className="text-3xl font-bold font-display text-gray-800 dark:text-white">
-                            {getTitleForTab(activeTab)}
-                        </h1>
-                    )}
-                    {/* Mobile Sidebar Trigger could go here if needed */}
-                </div>
-                {renderMainContent()}
+                <AnimatePresence>
+                  {hasNewPosts && (
+                    <motion.button
+                      initial={{ y: -50, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      exit={{ y: -50, opacity: 0 }}
+                      onClick={acknowledgeNewPosts}
+                      className="fixed top-24 left-1/2 -translate-x-1/2 z-40 bg-accent-blue text-white px-6 py-2 rounded-full shadow-2xl font-bold text-sm flex items-center space-x-2"
+                    >
+                      <span>✨ Nova postagem disponível!</span>
+                    </motion.button>
+                  )}
+                </AnimatePresence>
+
+                {activeTab === 'my-posts' && (
+                    <div className="space-y-6">
+                        <motion.div 
+                            initial={{ opacity: 0, y: -20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="bg-white dark:bg-dark-card rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 overflow-hidden"
+                        >
+                            {/* Header Banner */}
+                            <div className="h-32 bg-gradient-to-r from-accent-green to-accent-blue opacity-20 relative">
+                                <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                                    <svg className="w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                                        <path d="M0 100 C 20 0 50 0 100 100 Z" fill="currentColor" />
+                                    </svg>
+                                </div>
+                            </div>
+                            
+                            <div className="px-8 pb-8 -mt-12 relative">
+                                <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between gap-6">
+                                    {/* Avatar */}
+                                    <div className="relative">
+                                        <div className="w-28 h-28 rounded-3xl border-4 border-white dark:border-dark-card bg-gray-200 dark:bg-gray-700 shadow-xl overflow-hidden flex items-center justify-center">
+                                            {currentUserProfile.avatar ? (
+                                                <img src={currentUserProfile.avatar} alt={currentUserProfile.name} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-4xl font-bold text-gray-400">{currentUserProfile.name.charAt(0).toUpperCase()}</span>
+                                            )}
+                                        </div>
+                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-accent-green border-2 border-white dark:border-dark-card rounded-full shadow-sm"></div>
+                                    </div>
+
+                                    {/* Stats */}
+                                    <div className="flex items-center space-x-4 sm:space-x-12 mb-2">
+                                        <div className="text-center">
+                                            <p className="text-xl font-bold text-gray-900 dark:text-white">{myPostsCount}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Publicações</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => setShowFollowingList(!showFollowingList)}
+                                            className="text-center border-x border-gray-100 dark:border-gray-800 px-8 hover:bg-gray-50 dark:hover:bg-gray-800 transition rounded-xl p-2"
+                                        >
+                                            <p className="text-xl font-bold text-gray-900 dark:text-white">{followingCount}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Seguindo</p>
+                                        </button>
+                                        <div className="text-center">
+                                            <p className="text-xl font-bold text-gray-900 dark:text-white">{followersCount}</p>
+                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Seguidores</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Name and Info */}
+                                <div className="mt-6 text-center sm:text-left">
+                                    <h3 className="text-2xl font-bold text-gray-900 dark:text-white">{currentUserProfile.name}</h3>
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Sua jornada no <span className="text-accent-green font-bold">calorix</span></p>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        <AnimatePresence>
+                            {showFollowingList && (
+                                <motion.div 
+                                    initial={{ opacity: 0, height: 0 }}
+                                    animate={{ opacity: 1, height: 'auto' }}
+                                    exit={{ opacity: 0, height: 0 }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="bg-white dark:bg-dark-card rounded-3xl p-6 border border-gray-100 dark:border-gray-800 shadow-sm">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="font-bold text-lg">Pessoas que você segue</h4>
+                                            <button onClick={() => setShowFollowingList(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full"><XIcon className="w-5 h-5"/></button>
+                                        </div>
+                                        {currentUserProfile.following && currentUserProfile.following.length > 0 ? (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                {currentUserProfile.following.map((email) => (
+                                                    <div key={email} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-2xl">
+                                                        <div className="flex items-center space-x-3">
+                                                            <div className="w-10 h-10 rounded-full bg-accent-green/10 flex items-center justify-center text-accent-green">
+                                                                <UserIcon />
+                                                            </div>
+                                                            <span className="text-sm font-bold truncate max-w-[120px]">{email}</span>
+                                                        </div>
+                                                        <button 
+                                                            onClick={() => onFollowUser(email, '')}
+                                                            className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-1.5 rounded-full hover:bg-red-100 transition"
+                                                        >
+                                                            Deixar de seguir
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-gray-500 text-center py-4">Você ainda não segue ninguém.</p>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                )}
+
+                {activeTab === 'home' && (
+                  <div className="space-y-6">
+                    <CreatePost userProfile={currentUserProfile} onCreatePost={handleCreatePost} />
+                    
+                    <div className="flex items-center space-x-3 overflow-x-auto pb-4 scrollbar-hide">
+                       <FilterButton filter="all" label="🚀 Todos" />
+                       <FilterButton filter="following" label="👥 Seguindo" />
+                       <FilterButton filter="motivation" label="💪 Motivação" />
+                       <FilterButton filter="recipe" label="🍳 Receitas" />
+                       <FilterButton filter="tip" label="💡 Dicas" />
+                    </div>
+                  </div>
+                )}
+
+                {activeTab === 'guidelines' ? (
+                  <CommunityGuidelines />
+                ) : (
+                  <div className="space-y-8 pb-12">
+                    <AnimatePresence mode="popLayout">
+                      {filteredPosts.length > 0 ? (
+                        filteredPosts.map((post) => (
+                          <PostCard 
+                            key={post.id}
+                            post={post}
+                            currentUserProfile={currentUserProfile}
+                            currentUserAuth={currentUserAuth}
+                            onFollowUser={onFollowUser}
+                            onSavePost={onSavePost}
+                            onSharePost={onSharePost}
+                          />
+                        ))
+                      ) : (
+                        <motion.div 
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="text-center py-20 bg-white dark:bg-dark-card rounded-3xl border-2 border-dashed border-gray-100 dark:border-gray-800"
+                        >
+                          <span className="text-4xl">🌵</span>
+                          <h3 className="mt-4 font-bold text-gray-500">Nada por aqui ainda.</h3>
+                          <p className="text-sm text-gray-400 mt-1">Sua jornada está apenas começando!</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
             </main>
-        </div>
+        </motion.div>
     );
 };
 

@@ -113,6 +113,7 @@ export interface UserProfile {
   age: number;
   sex: 'male' | 'female' | 'prefer_not_to_say';
   weight: number; // in kg
+  targetWeight?: number; // in kg
   height: number; // in cm
   goal: 'lose' | 'maintain' | 'gain';
   activityLevel: ActivityLevel;
@@ -225,9 +226,13 @@ export interface Comment {
     };
     text: string;
     timestamp: number;
+    reactions: {
+        [key in ReactionType]?: string[];
+    };
+    replies: Comment[];
 }
 
-export type ReactionType = 'like' | 'love';
+export type ReactionType = 'like' | 'love' | 'dislike';
 export type PostCategory = 'motivation' | 'recipe' | 'tip';
 
 export interface Post {

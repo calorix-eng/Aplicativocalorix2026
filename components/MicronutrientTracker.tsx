@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { UserProfile, DailyLog, Micronutrient } from '../types';
 import { AlertIcon } from './icons/AlertIcon';
@@ -54,10 +55,9 @@ const DonutChart: React.FC<{ percentage: number }> = ({ percentage }) => {
 
 const MicronutrientTracker: React.FC<MicronutrientTrackerProps> = ({ userProfile, dailyLog }) => {
     
-    const goals = userProfile.goals.micronutrients;
-    const intake = dailyLog.micronutrientIntake;
+    const goals = userProfile.goals.micronutrients || {};
+    const intake = dailyLog.micronutrientIntake || {};
 
-    // FIX: Cast Object.keys(goals) to Micronutrient[] to ensure type safety when accessing goal properties.
     const overallProgress = (Object.keys(goals) as Micronutrient[]).reduce((acc, microKey) => {
         const goalAmount = goals[microKey]?.amount ?? 0;
         const intakeAmount = intake[microKey] ?? 0;
@@ -88,7 +88,6 @@ const MicronutrientTracker: React.FC<MicronutrientTrackerProps> = ({ userProfile
                         <DonutChart percentage={averagePercentage} />
                     </div>
                     <div className="md:col-span-2 space-y-3 max-h-72 overflow-y-auto pr-2">
-                        {/* FIX: Iterate using Object.keys cast to Micronutrient[] to provide type safety for the 'goal' object, replacing Object.entries. */}
                         {(Object.keys(goals) as Micronutrient[]).map((micronutrientKey) => {
                             const goal = goals[micronutrientKey];
                             if (!goal) return null;

@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { UserProfile, Food, MealSuggestion } from '../types';
 import { getMealRecommendations } from '../services/geminiService';
@@ -8,7 +9,8 @@ import { Card, CardHeader, CardTitle, CardContent } from './CalorieRing';
 interface MealRecommendationsProps {
   userProfile: UserProfile;
   consumedTotals: { calories: number; protein: number; carbs: number; fat: number };
-  onAddFood: (food: Food, mealName: string) => void;
+  // FIX: Updated to expect an array of Food to be compatible with App.tsx's handler.
+  onAddFood: (foods: Food[], mealName: string) => void;
 }
 
 const MealRecommendations: React.FC<MealRecommendationsProps> = ({ userProfile, consumedTotals, onAddFood }) => {
@@ -74,7 +76,8 @@ const MealRecommendations: React.FC<MealRecommendationsProps> = ({ userProfile, 
                     <p className="text-xs italic text-gray-600 dark:text-gray-300 mb-3">"{suggestion.reasoning}"</p>
                     </div>
                     <button 
-                    onClick={() => onAddFood(suggestion.food, suggestion.mealCategory)}
+                    // FIX: Wrapped suggestion.food in an array to match updated prop type.
+                    onClick={() => onAddFood([suggestion.food], suggestion.mealCategory)}
                     className="w-full mt-2 bg-accent-green bg-opacity-10 text-accent-green dark:bg-opacity-20 p-2 rounded-md text-sm font-semibold flex items-center justify-center hover:bg-opacity-20 dark:hover:bg-opacity-30 transition"
                     >
                     <PlusIcon />

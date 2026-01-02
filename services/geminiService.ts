@@ -405,14 +405,19 @@ export const generateWorkout = async (userProfile: UserProfile, equipment: strin
 }
 
 /**
- * Gera uma imagem para um exercício usando o modelo gemini-2.5-flash-image.
+ * Gera uma imagem usando o modelo gemini-2.5-flash-image.
+ * Funciona para exercícios e receitas.
  */
-export const generateExerciseImage = async (prompt: string): Promise<string | null> => {
+export const generateAiImage = async (prompt: string, type: 'food' | 'fitness' = 'food'): Promise<string | null> => {
   try {
+    const stylePrompt = type === 'food' 
+        ? "Professional food photography, appetizing, studio lighting, high resolution, centered composition."
+        : "High quality fitness instruction illustration, minimalist flat vector style, white background.";
+        
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: {
-        parts: [{ text: `${prompt}. High quality fitness instruction illustration, minimalist style, white background.` }],
+        parts: [{ text: `${prompt}. ${stylePrompt}` }],
       },
       config: {
         imageConfig: {
@@ -428,7 +433,9 @@ export const generateExerciseImage = async (prompt: string): Promise<string | nu
     }
     return null;
   } catch (error) {
-    console.error("Error generating exercise image:", error);
+    console.error("Error generating AI image:", error);
     return null;
   }
 };
+// Alias for backward compatibility if needed elsewhere
+export const generateExerciseImage = (prompt: string) => generateAiImage(prompt, 'fitness');
