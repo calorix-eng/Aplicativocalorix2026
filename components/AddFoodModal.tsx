@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Food, Micronutrient } from '../types';
 import { getNutritionFromImage, getNutritionFromText, getNutritionFromBarcode } from '../services/geminiService';
-import { fileToBase64 } from '../utils/fileUtils';
+import { fileToBase64, resizeImage } from '../utils/fileUtils';
 import { SearchIcon } from './icons/SearchIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { BarcodeIcon } from './icons/BarcodeIcon';
@@ -40,9 +40,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   
   const [librarySearch, setLibrarySearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
-  const [editingFood, setEditingFood] = useState<LibraryFood | null>(null);
-
-  const categories = useMemo(() => ['Todas', ...Array.from(new Set(foodLibrary.map(f => f.category)))], [foodLibrary]);
 
   const filteredLibrary = useMemo(() => {
     return foodLibrary.filter(f => {
@@ -79,26 +76,21 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   
   const processAndAnalyzeImage = async (base64Image: string, mimeType: string) => {
     setIsLoading(true);
-    setLoadingMessage("Enviando para IA...");
+    setLoadingMessage("Otimizando imagem...");
     setError(null);
     setResults([]);
     
-    // Simula mensagens de progresso para melhorar UX mobile
-    const progressInterval = setInterval(() => {
-        setLoadingMessage(prev => {
-            if (prev.includes("Enviando")) return "Identificando alimentos...";
-            if (prev.includes("Identificando")) return "Calculando nutrientes...";
-            return "Finalizando análise...";
-        });
-    }, 2000);
-
     try {
-        const foundFoods = await getNutritionFromImage(base64Image, mimeType);
+        // Redimensionamento agressivo para garantir funcionamento em qualquer rede (Wi-Fi/4G)
+        const optimizedBase64 = await resizeImage(base64Image, 768, 768, 0.6);
+        
+        setLoadingMessage("Identificando alimentos...");
+        const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
     } catch (e) {
-        setError('Ocorreu uma falha na análise. Verifique sua conexão com a internet e tente novamente.');
+        console.error(e);
+        setError('Falha na análise. Verifique se a foto está clara e tente novamente.');
     } finally {
-        clearInterval(progressInterval);
         setIsLoading(false);
     }
   };
@@ -107,6 +99,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       const file = e.target.files?.[0];
       if (!file) return;
       const { mimeType, data } = await fileToBase64(file);
+      // 'data' aqui já é base64 puro do fileToBase64
       processAndAnalyzeImage(data, mimeType);
   };
 
@@ -118,7 +111,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleSearch = async () => {
     if (!query) return;
     setIsLoading(true);
-    setLoadingMessage("Buscando na base de dados...");
+    setLoadingMessage("Buscando dados...");
     setError(null);
     try {
       const foundFoods = await getNutritionFromText(query);
@@ -139,7 +132,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       const foundFoods = await getNutritionFromBarcode(barcode);
       processResults(foundFoods);
     } catch (e) {
-      setError('Produto não encontrado ou erro na leitura.');
+      setError('Produto não encontrado.');
     } finally {
       setIsLoading(false);
     }
@@ -185,7 +178,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
       <div className="bg-white dark:bg-dark-card rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-lg h-[92dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col overflow-hidden animate-slide-in-bottom">
         
-        {/* Header */}
         <div className="p-5 border-b dark:border-gray-800 flex justify-between items-center bg-white dark:bg-dark-card sticky top-0 z-10">
           <div>
             <h2 className="text-xl font-black text-gray-800 dark:text-white">{mealName}</h2>
@@ -196,7 +188,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </button>
         </div>
         
-        {/* Tabs */}
         <div className="border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20">
           <div className="flex">
             <TabButton tab="search" label="Busca" icon={<SearchIcon className="w-5 h-5" />} />
@@ -206,7 +197,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="p-5 overflow-y-auto flex-grow scrollbar-hide">
           {activeTab === 'search' && (
             <div className="space-y-4">
@@ -224,7 +214,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                    IR
                 </button>
               </div>
-              <p className="text-[10px] text-gray-400 text-center font-bold uppercase">Ou tente descrever a porção para mais precisão</p>
             </div>
           )}
 
@@ -238,7 +227,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     </div>
                     <div>
                         <h3 className="text-lg font-bold">Inteligência Artificial</h3>
-                        <p className="text-sm text-gray-500 max-w-[240px] mx-auto">Tire uma foto do seu prato e deixe que o calorix identifique tudo para você.</p>
+                        <p className="text-sm text-gray-500 max-w-[240px] mx-auto">Tire uma foto do seu prato e o calorix identificará os nutrientes.</p>
                     </div>
                     
                     <div className="flex flex-col gap-3 pt-4">
@@ -274,7 +263,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white p-5 rounded-2xl font-bold hover:bg-green-600 transition inline-flex items-center justify-center w-full shadow-lg">
                         <span className="ml-2">Ativar Scanner</span>
                     </button>
-                    <p className="text-xs text-gray-400">Ideal para produtos com embalagem.</p>
                 </div>
             )
           )}
@@ -286,7 +274,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                         type="text"
                         value={librarySearch}
                         onChange={(e) => setLibrarySearch(e.target.value)}
-                        placeholder="Pesquisar no meu histórico..."
+                        placeholder="Pesquisar alimentos comuns..."
                         className="w-full p-3 pl-10 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-900"
                     />
                     <SearchIcon className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
@@ -308,30 +296,22 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
               </div>
           )}
 
-          {/* Loading state */}
           {isLoading && (
               <div className="fixed inset-0 bg-white/90 dark:bg-dark-card/90 z-20 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
                 <div className="relative w-24 h-24 mb-6">
-                    <div className="absolute inset-0 border-4 border-accent-green/20 rounded-full"></div>
                     <div className="absolute inset-0 border-4 border-accent-green border-t-transparent rounded-full animate-spin"></div>
                     <div className="absolute inset-0 flex items-center justify-center">
                         <SparklesIcon className="w-8 h-8 text-accent-green animate-pulse" />
                     </div>
                 </div>
                 <h3 className="text-xl font-black mb-2">{loadingMessage}</h3>
-                <p className="text-sm text-gray-500">Isso pode levar alguns segundos dependendo da sua conexão.</p>
               </div>
           )}
 
           {error && <div className="mt-4 p-4 text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30 text-center">{error}</div>}
 
-          {/* Results List */}
           {results.length > 0 && !isLoading && (
             <div className="mt-6 space-y-4">
-              <div className="flex justify-between items-center px-1">
-                <h3 className="font-black text-xs uppercase tracking-widest text-gray-400">Resultados Encontrados</h3>
-                <span className="text-[10px] bg-accent-blue/10 text-accent-blue px-2 py-1 rounded-full font-bold">IA</span>
-              </div>
               <ul className="space-y-3">
                 {results.map(food => (
                   <li 
@@ -342,17 +322,12 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     <div className="flex items-center justify-between">
                       <div className="flex-grow">
                         <p className="font-bold text-gray-800 dark:text-white">{food.name}</p>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">
-                          {food.servingSize}
-                        </p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">{food.servingSize}</p>
                       </div>
                       <div className="text-right flex items-center gap-4">
                         <div>
                             <p className="font-black text-lg text-accent-green">{food.calories}</p>
                             <p className="text-[9px] text-gray-400 font-bold uppercase -mt-1 text-center">kcal</p>
-                        </div>
-                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedFoodIds.has(food.id) ? 'bg-accent-green border-accent-green' : 'border-gray-300 dark:border-gray-600'}`}>
-                            {selectedFoodIds.has(food.id) && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg>}
                         </div>
                       </div>
                     </div>
@@ -363,26 +338,11 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           )}
         </div>
 
-        {/* Footer Actions */}
         <div className="p-5 border-t dark:border-gray-800 bg-white dark:bg-dark-card pb-10 sm:pb-5">
-            {selectionSummary ? (
-                <div className="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border dark:border-gray-800">
-                    <div className="text-left">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Selecionado</p>
-                        <p className="text-xl font-black text-accent-green">{selectionSummary.calories} <span className="text-xs font-normal">kcal</span></p>
-                    </div>
-                    <div className="flex gap-3 text-[10px] font-bold text-gray-500 uppercase border-l dark:border-gray-800 pl-4">
-                        <div><span className="block text-red-500">{selectionSummary.protein}g</span> P</div>
-                        <div><span className="block text-orange-500">{selectionSummary.carbs}g</span> C</div>
-                        <div><span className="block text-yellow-500">{selectionSummary.fat}g</span> G</div>
-                    </div>
-                </div>
-            ) : null}
-            
             <button
                 onClick={handleAddSelected}
                 disabled={selectedFoodIds.size === 0 || isLoading}
-                className="w-full bg-accent-green text-white p-5 rounded-2xl font-black text-lg hover:bg-green-600 transition disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 shadow-xl active:scale-[0.98]"
+                className="w-full bg-accent-green text-white p-5 rounded-2xl font-black text-lg hover:bg-green-600 transition disabled:bg-gray-200 dark:disabled:bg-gray-800 shadow-xl"
             >
                 {selectedFoodIds.size === 0 ? 'Selecione Alimentos' : `ADICIONAR ${selectedFoodIds.size} ITEM(S)`}
             </button>

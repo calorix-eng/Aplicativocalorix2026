@@ -14,10 +14,10 @@ export const fileToBase64 = (file: File): Promise<{mimeType: string, data: strin
 };
 
 /**
- * Redimensiona uma imagem em base64 para economizar espaço no localStorage.
- * Essencial para evitar o erro 'quota exceeded'.
+ * Redimensiona e comprime uma imagem em base64.
+ * Essencial para análise em tempo real e economia de banda/armazenamento.
  */
-export const resizeImage = (base64Str: string, maxWidth: number, maxHeight: number, quality: number = 0.7): Promise<string> => {
+export const resizeImage = (base64Str: string, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
         img.src = base64Str;
@@ -45,8 +45,10 @@ export const resizeImage = (base64Str: string, maxWidth: number, maxHeight: numb
                 ctx.imageSmoothingQuality = 'high';
                 ctx.drawImage(img, 0, 0, width, height);
             }
-            resolve(canvas.toDataURL('image/jpeg', quality));
+            // Retorna apenas a string base64 sem o prefixo data:image/jpeg;base64,
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve(dataUrl.split(',')[1]);
         };
-        img.onerror = () => resolve(base64Str); // Fallback para original em caso de erro
+        img.onerror = () => resolve(base64Str.includes(',') ? base64Str.split(',')[1] : base64Str);
     });
 };
