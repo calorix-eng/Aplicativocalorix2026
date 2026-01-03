@@ -3,7 +3,7 @@ import React, { useState, useRef, ChangeEvent, FormEvent } from 'react';
 import { UserProfile, ActivityLevel, MealCategory, DailyLog } from '../types';
 import { XIcon } from './icons/XIcon';
 import { CameraIcon } from './icons/CameraIcon';
-import { fileToBase64 } from '../utils/fileUtils';
+import { fileToBase64, resizeImage } from '../utils/fileUtils';
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import WaterGoalInput from './WaterGoalInput';
@@ -85,7 +85,10 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         const file = e.target.files?.[0];
         if (file) {
             const { mimeType, data } = await fileToBase64(file);
-            setFormData(prev => ({ ...prev, avatar: `data:${mimeType};base64,${data}` }));
+            const base64 = `data:${mimeType};base64,${data}`;
+            // Redimensiona para 200px para garantir que o localStorage não estoure
+            const resized = await resizeImage(base64, 200, 200, 0.6);
+            setFormData(prev => ({ ...prev, avatar: resized }));
         }
     };
 
@@ -93,12 +96,16 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         const file = e.target.files?.[0];
         if (file) {
             const { mimeType, data } = await fileToBase64(file);
-            setFormData(prev => ({ ...prev, coachAvatar: `data:${mimeType};base64,${data}` }));
+            const base64 = `data:${mimeType};base64,${data}`;
+            const resized = await resizeImage(base64, 200, 200, 0.6);
+            setFormData(prev => ({ ...prev, coachAvatar: resized }));
         }
     };
 
     const handleCoachPhotoTaken = async ({ mimeType, data }: { mimeType: string, data: string }) => {
-        setFormData(prev => ({ ...prev, coachAvatar: `data:${mimeType};base64,${data}` }));
+        const base64 = `data:${mimeType};base64,${data}`;
+        const resized = await resizeImage(base64, 200, 200, 0.6);
+        setFormData(prev => ({ ...prev, coachAvatar: resized }));
         setIsCoachCameraOpen(false);
     };
 
@@ -566,7 +573,7 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
                                             onClick={handleToggle}
                                             className={`px-4 py-2 text-sm font-semibold rounded-full transition w-32 text-center ${
                                                 isConnected 
-                                                    ? 'bg-red-500/10 text-red-500 hover:bg-red-500/20' 
+                                                    ? 'bg-red-500/10 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20' 
                                                     : 'bg-accent-green text-white hover:bg-green-600'
                                             }`}
                                         >

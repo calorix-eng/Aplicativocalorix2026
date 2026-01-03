@@ -1,3 +1,4 @@
+
 import { useState, useEffect, Dispatch, SetStateAction } from 'react';
 
 export function useLocalStorage<T>(key: string | null, initialValue: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
@@ -35,8 +36,13 @@ export function useLocalStorage<T>(key: string | null, initialValue: T | (() => 
                 } else {
                     window.localStorage.setItem(key, JSON.stringify(storedValue));
                 }
-            } catch (error) {
-                console.error("Error writing to localStorage", error);
+            } catch (error: any) {
+                if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+                    console.error("CRITICAL: LocalStorage quota exceeded. Some data might not be saved.", key);
+                    // Tentativa desesperada: se for o perfil e o erro persistir, avisar o usuário ou limpar lixo
+                } else {
+                    console.error("Error writing to localStorage", error);
+                }
             }
         }
     }, [key, storedValue]);

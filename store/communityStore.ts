@@ -5,10 +5,14 @@ import { deleteCommunityPost } from '../services/firestoreService';
 
 interface CommunityState {
   posts: Post[];
+  following: string[]; // Lista de e-mails/IDs de quem o usuário segue
   hasNewPosts: boolean;
   setPosts: (posts: Post[]) => void;
+  setFollowingStore: (list: string[]) => void;
+  toggleFollowStore: (email: string) => void;
   addPost: (post: Post) => void;
   deletePost: (postId: string) => Promise<void>;
+  updateUserMetadata: (uid: string, name: string, avatar?: string) => void;
   addComment: (postId: string, comment: Comment, parentCommentId?: string) => void;
   toggleReaction: (postId: string, reaction: ReactionType, userEmail: string) => void;
   toggleCommentReaction: (postId: string, commentId: string, reaction: ReactionType, userEmail: string) => void;
@@ -20,12 +24,23 @@ const REACTION_TYPES: ReactionType[] = ['like', 'love', 'dislike'];
 
 export const useCommunityStore = create<CommunityState>((set) => ({
   posts: JSON.parse(localStorage.getItem('communityPosts') || '[]'),
+  following: [],
   hasNewPosts: false,
   
   setPosts: (posts) => {
     localStorage.setItem('communityPosts', JSON.stringify(posts));
     set({ posts });
   },
+
+  setFollowingStore: (list) => set({ following: list }),
+
+  toggleFollowStore: (email) => set((state) => {
+    const isFollowing = state.following.includes(email);
+    const newList = isFollowing 
+        ? state.following.filter(e => e !== email)
+        : [...state.following, email];
+    return { following: newList };
+  }),
 
   addPost: (post) => set((state) => {
     const newPosts = [post, ...state.posts];
@@ -35,19 +50,36 @@ export const useCommunityStore = create<CommunityState>((set) => ({
 
   deletePost: async (postId) => {
     try {
-        // Tenta deletar do Firebase primeiro
         await deleteCommunityPost(postId);
     } catch (error) {
         console.error("Erro ao deletar post do Firestore:", error);
     }
 
-    // Sempre atualiza o estado local para resposta imediata na UI
     set((state) => {
         const newPosts = state.posts.filter(p => p.id !== postId);
         localStorage.setItem('communityPosts', JSON.stringify(newPosts));
         return { posts: newPosts };
     });
   },
+
+  updateUserMetadata: (uid, name, avatar) => set((state) => {
+    const updateCommentMetadata = (comments: Comment[]): Comment[] => {
+      return comments.map(c => ({
+        ...c,
+        author: c.author.uid === uid ? { ...c.author, name, avatar } : c.author,
+        replies: updateCommentMetadata(c.replies)
+      }));
+    };
+
+    const newPosts = state.posts.map(p => ({
+      ...p,
+      author: p.author.uid === uid ? { ...p.author, name, avatar } : p.author,
+      comments: updateCommentMetadata(p.comments)
+    }));
+
+    localStorage.setItem('communityPosts', JSON.stringify(newPosts));
+    return { posts: newPosts };
+  }),
 
   addComment: (postId, comment, parentCommentId) => set((state) => {
     const newPosts = state.posts.map(p => {

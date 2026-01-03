@@ -28,6 +28,7 @@ import GoPremiumModal from './GoPremiumModal';
 import { defaultBrazilianFoods, LibraryFood } from './utils/brazilianFoodData';
 import IntegrationsDashboard from './components/IntegrationsDashboard';
 import FriendsDashboard from './components/FriendsDashboard';
+import { useCommunityStore } from './store/communityStore';
 
 type View = 'dashboard' | 'community' | 'recipes' | 'reports' | 'workouts' | 'integrations' | 'friends';
 const initialFasting: FastingState = { isFasting: false, startTime: null, durationHours: 0, endTime: null, completionNotified: false };
@@ -49,9 +50,20 @@ const App: React.FC = () => {
   const [showCoach, setShowCoach] = useState(false);
   const [modals, setModals] = useState({ profile: false, addFood: false, sidebar: false, quickView: false, reminders: false, challenges: false, achievements: false, notifications: false, password: false, premium: false });
 
+  const communityUpdateUserMetadata = useCommunityStore(state => state.updateUserMetadata);
+  const setFollowingStore = useCommunityStore(state => state.setFollowingStore);
+  const toggleFollowStore = useCommunityStore(state => state.toggleFollowStore);
+
   const dateStr = selectedDate.toISOString().split('T')[0];
   const showToast = useCallback((msg: string) => setToast({ message: msg, id: Date.now() }), []);
   const updateModal = (key: keyof typeof modals, val: boolean) => setModals(p => ({ ...p, [key]: val }));
+
+  // Sincroniza a lista de seguidos do perfil com o Store do Zustand ao iniciar
+  useEffect(() => {
+    if (userProfile?.following) {
+      setFollowingStore(userProfile.following);
+    }
+  }, [userProfile?.following, setFollowingStore]);
 
   // Dynamic Calculation of Micronutrients for the selected date
   const selectedDateLog = useMemo((): DailyLog => {
@@ -92,14 +104,20 @@ const App: React.FC = () => {
   const handleFollowUser = useCallback((email: string) => {
     if (!userProfile) return;
     const isFollowing = userProfile.following?.includes(email);
+    
+    // Atualiza localmente no perfil (LocalStorage)
     setUserProfile({
         ...userProfile,
         following: isFollowing 
             ? userProfile.following?.filter(e => e !== email)
             : [...(userProfile.following || []), email]
     });
+
+    // Atualiza no Zustand (Global Community Store)
+    toggleFollowStore(email);
+    
     showToast(isFollowing ? "Deixou de seguir." : "Agora você está seguindo!");
-  }, [userProfile, setUserProfile, showToast]);
+  }, [userProfile, setUserProfile, toggleFollowStore, showToast]);
 
   const handleSavePost = useCallback((postId: string) => {
     if (!userProfile) return;
@@ -163,6 +181,19 @@ const App: React.FC = () => {
     } catch (e) {}
   }, [showToast]);
 
+  const handleSaveProfile = useCallback((profileData: Partial<UserProfile>, mealCategories: MealCategory[]) => {
+    if (!userProfile || !authUser) return;
+    const updatedProfile = { ...userProfile, ...profileData, mealCategories };
+    setUserProfile(updatedProfile);
+    
+    // Sincroniza metadados na comunidade
+    if (profileData.name || profileData.avatar) {
+      communityUpdateUserMetadata(authUser.uid, profileData.name || userProfile.name, profileData.avatar || userProfile.avatar);
+    }
+    
+    showToast("Perfil atualizado!");
+  }, [userProfile, authUser, setUserProfile, communityUpdateUserMetadata, showToast]);
+
   if (!authUser) return <Auth onLogin={setAuthUser} onRegister={setAuthUser} />;
   if (!userProfile) return <Onboarding onProfileCreate={setUserProfile} defaultName={authUser.name} />;
   if (!userProfile.hasCompletedTutorial) return <InteractiveTutorial onComplete={() => setUserProfile({ ...userProfile, hasCompletedTutorial: true })} />;
@@ -183,7 +214,7 @@ const App: React.FC = () => {
         <Sidebar isOpen={modals.sidebar} onClose={() => updateModal('sidebar', false)} userProfile={userProfile} currentView={currentView} onNavigate={v => { setCurrentView(v); updateModal('sidebar', false); }} onLogout={() => setAuthUser(null)} onRemindersClick={() => updateModal('reminders', true)} onChallengesClick={() => updateModal('challenges', true)} onAchievementsClick={() => updateModal('achievements', true)} />
         <QuickViewSidebar isOpen={modals.quickView} onClose={() => updateModal('quickView', false)} userProfile={userProfile} dailyLog={selectedDateLog} />
         {modals.addFood && mealToAdd && <AddFoodModal mealName={mealToAdd.name} onClose={() => updateModal('addFood', false)} onAddFoods={(f) => handleAddFoodsToLog(f, mealToAdd.name)} foodLibrary={foodLibrary} onUpdateFoodLibrary={setFoodLibrary} />}
-        {modals.profile && <ProfileModal userProfile={userProfile} dailyLogs={dailyLogs} onClose={() => updateModal('profile', false)} onSave={d => setUserProfile({ ...userProfile, ...d })} onLogout={() => setAuthUser(null)} onUpdateWaterGoal={(g) => setUserProfile({...userProfile, goals: {...userProfile.goals, water: g}})} onChangePasswordClick={() => updateModal('password', true)} onUpgradeClick={() => updateModal('premium', true)} initialTab={initialProfileTab} darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} />}
+        {modals.profile && <ProfileModal userProfile={userProfile} dailyLogs={dailyLogs} onClose={() => updateModal('profile', false)} onSave={handleSaveProfile} onLogout={() => setAuthUser(null)} onUpdateWaterGoal={(g) => setUserProfile({...userProfile, goals: {...userProfile.goals, water: g}})} onChangePasswordClick={() => updateModal('password', true)} onUpgradeClick={() => updateModal('premium', true)} initialTab={initialProfileTab} darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} />}
         {modals.reminders && <RemindersModal reminders={userProfile.reminders || []} onClose={() => updateModal('reminders', false)} onSave={r => setUserProfile({ ...userProfile, reminders: r })} />}
         {modals.challenges && <ChallengesModal userProfile={userProfile} onClose={() => updateModal('challenges', false)} onSelectChallenge={() => {}} onDisableChallenge={() => {}} onCreateAndSelectCustomChallenge={() => {}} />}
         {modals.achievements && <AchievementsModal userProfile={userProfile} onClose={() => updateModal('achievements', false)} />}

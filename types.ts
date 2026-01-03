@@ -220,6 +220,7 @@ export interface Recipe {
 export interface Comment {
     id: string;
     author: {
+        uid: string;
         name: string;
         email: string;
         avatar?: string;

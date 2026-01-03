@@ -9,7 +9,6 @@ import CommunitySidebar from './CommunitySidebar';
 import CommunityGuidelines from './CommunityGuidelines';
 import { UserIcon } from './icons/UserIcon';
 import { XIcon } from './icons/XIcon';
-import { MenuIcon } from './icons/MenuIcon';
 
 type CommunityTab = 'home' | 'notifications' | 'saved' | 'guidelines' | 'my-posts';
 type PostFilter = PostCategory | 'all' | 'following';
@@ -33,7 +32,6 @@ const CommunityFeed: React.FC<CommunityFeedProps> = ({
     const [activeTab, setActiveTab] = useState<CommunityTab>('home');
     const [activeFilter, setActiveFilter] = useState<PostFilter>('all');
     const [showFollowingList, setShowFollowingList] = useState(false);
-    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
     const handleCreatePost = (text: string, category: PostCategory, imageUrl?: string, videoUrl?: string) => {
         const newPost: Post = {
@@ -80,30 +78,19 @@ const CommunityFeed: React.FC<CommunityFeedProps> = ({
     };
 
     return (
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 relative">
-            {/* Sidebar Toggle Button (Mobile Only) */}
-            <button 
-                onClick={() => setIsSidebarOpen(true)}
-                className="lg:hidden fixed bottom-6 left-6 z-40 bg-accent-green text-white p-4 rounded-full shadow-2xl flex items-center space-x-2 border-2 border-white dark:border-gray-800"
-            >
-                <MenuIcon className="w-6 h-6" />
-                <span className="font-bold pr-1">Menu</span>
-            </button>
-
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 relative pb-32 lg:pb-8">
             <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
-                {/* Sidebar - Desktop e Mobile (via isSidebarOpen) */}
-                <aside className="lg:col-span-1">
+                {/* Sidebar Responsivo: Vertical no Desktop, Invisível no fluxo do Mobile (Pois é fixed bottom) */}
+                <div className="lg:col-span-1 h-0 lg:h-auto">
                     <CommunitySidebar 
                         activeTab={activeTab} 
                         onTabChange={(tab) => {
                             setActiveTab(tab);
-                            setIsSidebarOpen(false);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
                         unreadCount={0}
-                        isOpen={isSidebarOpen}
-                        onClose={() => setIsSidebarOpen(false)}
                     />
-                </aside>
+                </div>
 
                 <main className="lg:col-span-3 space-y-6">
                     <AnimatePresence>

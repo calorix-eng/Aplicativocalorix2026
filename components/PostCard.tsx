@@ -34,6 +34,7 @@ const PostCard: React.FC<PostCardProps> = ({
     const [isCommentsOpen, setIsCommentsOpen] = useState(false);
     const { getReactionInfo, handleToggle } = useReactions(post.id, currentUserAuth.email);
     const deletePost = useCommunityStore((state) => state.deletePost);
+    const followingList = useCommunityStore((state) => state.following);
     
     const likeInfo = getReactionInfo('like');
     const loveInfo = getReactionInfo('love');
@@ -43,7 +44,7 @@ const PostCard: React.FC<PostCardProps> = ({
     
     // Mais seguro comparar por UID para evitar problemas com caixa alta em emails
     const isOwnPost = currentUserAuth.uid === post.author.uid;
-    const isFollowing = currentUserProfile.following?.includes(post.author.email);
+    const isFollowing = followingList.includes(post.author.email);
 
     const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -75,25 +76,32 @@ const PostCard: React.FC<PostCardProps> = ({
                       </div>
                     </div>
                     <div>
-                        <p className="font-bold text-gray-900 dark:text-white text-sm sm:text-base">{post.author.name}</p>
-                        <p className="text-[10px] sm:text-xs text-gray-500">{formatTimeAgo(post.timestamp)}</p>
+                        <div className="flex items-center gap-2">
+                            <p className="font-bold text-gray-900 dark:text-white text-sm sm:text-base leading-none">{post.author.name}</p>
+                            {!isOwnPost && (
+                                <button 
+                                    onClick={() => onFollowUser(post.author.email, post.author.uid)}
+                                    className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter transition-all border ${
+                                        isFollowing 
+                                            ? 'bg-gray-100 dark:bg-gray-800 text-gray-500 border-gray-200 dark:border-gray-700' 
+                                            : 'bg-accent-green/10 text-accent-green border-accent-green hover:bg-accent-green hover:text-white'
+                                    }`}
+                                >
+                                    {isFollowing ? 'Seguindo' : 'Seguir'}
+                                </button>
+                            )}
+                        </div>
+                        <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5">{formatTimeAgo(post.timestamp)}</p>
                     </div>
                 </div>
-                <div className="flex items-center space-x-2">
-                    {isOwnPost ? (
+                <div className="flex items-center">
+                    {isOwnPost && (
                         <button 
                           onClick={handleDelete}
                           className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all group"
                           title="Excluir publicação"
                         >
                             <TrashIcon className="w-5 h-5" />
-                        </button>
-                    ) : (
-                        <button 
-                          onClick={() => onFollowUser(post.author.email, post.author.uid)}
-                          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${isFollowing ? 'bg-gray-100 text-gray-500 hover:bg-gray-200' : 'bg-accent-green/10 text-accent-green hover:bg-accent-green hover:text-white'}`}
-                        >
-                            {isFollowing ? 'Deixar de Seguir' : '+ Seguir'}
                         </button>
                     )}
                 </div>
@@ -172,7 +180,7 @@ const PostCard: React.FC<PostCardProps> = ({
                 <CommentsModal 
                   post={post} 
                   userProfile={currentUserProfile} 
-                  currentUserEmail={currentUserAuth.email}
+                  currentUserAuth={currentUserAuth}
                   onClose={() => setIsCommentsOpen(false)} 
                 />
               )}

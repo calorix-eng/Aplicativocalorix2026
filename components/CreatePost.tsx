@@ -1,10 +1,11 @@
+
 import React, { useState, useRef } from 'react';
 import { UserProfile, PostCategory } from '../types';
 import { PaperAirplaneIcon } from './icons/PaperAirplaneIcon';
 import { ImageIcon } from './icons/ImageIcon';
 import { VideoIcon } from './icons/VideoIcon';
 import { XIcon } from './icons/XIcon';
-import { fileToBase64 } from '../utils/fileUtils';
+import { fileToBase64, resizeImage } from '../utils/fileUtils';
 
 interface CreatePostProps {
     userProfile: UserProfile;
@@ -26,9 +27,11 @@ const CreatePost: React.FC<CreatePostProps> = ({ userProfile, onCreatePost }) =>
 
         setIsProcessing(true);
         const { data, mimeType } = await fileToBase64(file);
-        const url = `data:${mimeType};base64,${data}`;
+        let url = `data:${mimeType};base64,${data}`;
 
         if (file.type.startsWith('image/')) {
+            // Redimensiona imagens do feed para um tamanho razoável (800px) para não estourar o localStorage
+            url = await resizeImage(url, 800, 800, 0.7);
             setMedia({ url, type: 'image' });
         } else if (file.type.startsWith('video/')) {
             setMedia({ url, type: 'video' });

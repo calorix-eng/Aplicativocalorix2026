@@ -15,14 +15,12 @@ interface CommentItemProps {
     comment: Comment;
     postId: string;
     userProfile: UserProfile;
-    // FIX: Added currentUserEmail prop since UserProfile does not contain email.
     currentUserEmail: string;
     onReply: (comment: Comment) => void;
     level?: number;
 }
 
 const CommentItem: React.FC<CommentItemProps> = ({ comment, postId, userProfile, currentUserEmail, onReply, level = 0 }) => {
-    // FIX: Use currentUserEmail instead of missing userProfile.email.
     const { getReactionInfo, handleToggle } = useReactions(postId, currentUserEmail || 'user@calorix.app', comment.id);
     const likeInfo = getReactionInfo('like');
     const loveInfo = getReactionInfo('love');
@@ -98,12 +96,11 @@ const CommentItem: React.FC<CommentItemProps> = ({ comment, postId, userProfile,
 interface CommentsModalProps {
   post: Post;
   userProfile: UserProfile;
-  // FIX: Added currentUserEmail prop to resolve errors when creating/reacting to comments.
-  currentUserEmail: string;
+  currentUserAuth: { uid: string; email: string }; // Novo prop tipado para auth
   onClose: () => void;
 }
 
-const CommentsModal: React.FC<CommentsModalProps> = ({ post, userProfile, currentUserEmail, onClose }) => {
+const CommentsModal: React.FC<CommentsModalProps> = ({ post, userProfile, currentUserAuth, onClose }) => {
   const [text, setText] = useState('');
   const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
   const addComment = useCommunityStore((state) => state.addComment);
@@ -116,9 +113,9 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, userProfile, curren
     const newComment: Comment = {
       id: crypto.randomUUID(),
       author: {
+        uid: currentUserAuth.uid,
         name: userProfile.name,
-        // FIX: Use currentUserEmail prop.
-        email: currentUserEmail || 'user@calorix.app',
+        email: currentUserAuth.email,
         avatar: userProfile.avatar
       },
       text: text.trim(),
@@ -163,7 +160,7 @@ const CommentsModal: React.FC<CommentsModalProps> = ({ post, userProfile, curren
                 comment={comment} 
                 postId={post.id} 
                 userProfile={userProfile} 
-                currentUserEmail={currentUserEmail}
+                currentUserEmail={currentUserAuth.email}
                 onReply={setReplyingTo}
               />
             ))

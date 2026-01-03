@@ -11,15 +11,11 @@ import BarcodeScanner from './BarcodeScanner';
 import { ScannerIcon } from './icons/ScannerIcon';
 import { ImageIcon } from './icons/ImageIcon';
 import CameraCapture from './CameraCapture';
-import { FireIcon } from './icons/FireIcon';
-import { BoltIcon } from './icons/BoltIcon';
-import { LeafIcon } from './icons/LeafIcon';
-import { OilIcon } from './icons/OilIcon';
-import { BookOpenIcon } from './icons/BookOpenIcon';
 import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { LibraryFood } from '../utils/brazilianFoodData';
-
+import { BookOpenIcon } from './icons/BookOpenIcon';
+import { SparklesIcon } from './icons/SparklesIcon';
 
 interface AddFoodModalProps {
   mealName: string;
@@ -36,12 +32,12 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Food[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('Analisando...');
   const [error, setError] = useState<string | null>(null);
   const [selectedFoodIds, setSelectedFoodIds] = useState<Set<string>>(new Set());
   const [isScanning, setIsScanning] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   
-  // Library-specific state
   const [librarySearch, setLibrarySearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [editingFood, setEditingFood] = useState<LibraryFood | null>(null);
@@ -57,9 +53,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   }, [foodLibrary, librarySearch, selectedCategory]);
 
   const selectionSummary = useMemo(() => {
-    if (selectedFoodIds.size === 0) {
-        return null;
-    }
+    if (selectedFoodIds.size === 0) return null;
     const combinedResults = [...results, ...foodLibrary];
     const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     combinedResults.forEach(food => {
@@ -75,13 +69,9 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
 
   const processResults = (foundFoods: Food[]) => {
     if (foundFoods.length === 0) {
-      if (activeTab === 'photo') {
-        setError("Não foi possível identificar nenhum alimento na imagem. Por favor, tente outra.");
-      } else if (activeTab === 'barcode') {
-        setError("Nenhum produto encontrado para este código de barras.");
-      } else {
-        setError("Nenhum resultado encontrado. Tente um termo de busca diferente.");
-      }
+      setError(activeTab === 'photo' 
+        ? "A IA não conseguiu identificar alimentos nesta foto. Tente tirar em um ângulo diferente." 
+        : "Nenhum resultado encontrado.");
     }
     setResults(foundFoods);
     setSelectedFoodIds(new Set(foundFoods.map(f => f.id)));
@@ -89,15 +79,26 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   
   const processAndAnalyzeImage = async (base64Image: string, mimeType: string) => {
     setIsLoading(true);
+    setLoadingMessage("Enviando para IA...");
     setError(null);
     setResults([]);
-    setSelectedFoodIds(new Set());
+    
+    // Simula mensagens de progresso para melhorar UX mobile
+    const progressInterval = setInterval(() => {
+        setLoadingMessage(prev => {
+            if (prev.includes("Enviando")) return "Identificando alimentos...";
+            if (prev.includes("Identificando")) return "Calculando nutrientes...";
+            return "Finalizando análise...";
+        });
+    }, 2000);
+
     try {
         const foundFoods = await getNutritionFromImage(base64Image, mimeType);
         processResults(foundFoods);
     } catch (e) {
-        setError('Falha ao analisar a imagem. Por favor, tente novamente.');
+        setError('Ocorreu uma falha na análise. Verifique sua conexão com a internet e tente novamente.');
     } finally {
+        clearInterval(progressInterval);
         setIsLoading(false);
     }
   };
@@ -117,14 +118,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleSearch = async () => {
     if (!query) return;
     setIsLoading(true);
+    setLoadingMessage("Buscando na base de dados...");
     setError(null);
-    setResults([]);
-    setSelectedFoodIds(new Set());
     try {
       const foundFoods = await getNutritionFromText(query);
       processResults(foundFoods);
     } catch (e) {
-      setError('Falha ao buscar dados nutricionais. Por favor, tente novamente.');
+      setError('Falha ao buscar dados nutricionais.');
     } finally {
       setIsLoading(false);
     }
@@ -133,14 +133,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleBarcodeScan = async (barcode: string) => {
     setIsScanning(false);
     setIsLoading(true);
+    setLoadingMessage("Consultando código...");
     setError(null);
-    setResults([]);
-    setSelectedFoodIds(new Set());
     try {
       const foundFoods = await getNutritionFromBarcode(barcode);
       processResults(foundFoods);
     } catch (e) {
-      setError('Falha ao buscar dados do código de barras. Por favor, tente novamente.');
+      setError('Produto não encontrado ou erro na leitura.');
     } finally {
       setIsLoading(false);
     }
@@ -149,11 +148,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleToggleSelection = (foodId: string) => {
     setSelectedFoodIds(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(foodId)) {
-        newSet.delete(foodId);
-      } else {
-        newSet.add(foodId);
-      }
+      if (newSet.has(foodId)) newSet.delete(foodId);
+      else newSet.add(foodId);
       return newSet;
     });
   };
@@ -161,46 +157,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleAddSelected = () => {
     const combinedResults = [...results, ...foodLibrary];
     const foodsToAdd = combinedResults.filter(food => selectedFoodIds.has(food.id));
-    if (foodsToAdd.length > 0) {
-      onAddFoods(foodsToAdd);
-    }
-  };
-
-  const handleDeleteFromLibrary = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation();
-    if (window.confirm('Tem certeza que deseja excluir este alimento da biblioteca permanentemente?')) {
-        onUpdateFoodLibrary(foodLibrary.filter(f => f.id !== id));
-        setSelectedFoodIds(prev => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-        });
-    }
-  };
-
-  const handleEditInLibrary = (e: React.MouseEvent, food: LibraryFood) => {
-    e.stopPropagation();
-    setEditingFood(JSON.parse(JSON.stringify(food))); // Deep copy for editing
-  };
-
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (editingFood) {
-        onUpdateFoodLibrary(foodLibrary.map(f => f.id === editingFood.id ? editingFood : f));
-        setEditingFood(null);
-    }
-  };
-
-  const handleEditMicronutrient = (key: Micronutrient, value: string) => {
-    if (!editingFood) return;
-    const numValue = value === '' ? undefined : Number(value);
-    const newMicros = { ...editingFood.micronutrients };
-    if (numValue === undefined) {
-        delete newMicros[key];
-    } else {
-        newMicros[key] = numValue;
-    }
-    setEditingFood({ ...editingFood, micronutrients: newMicros });
+    if (foodsToAdd.length > 0) onAddFoods(foodsToAdd);
   };
 
   const TabButton = ({ tab, label, icon }: { tab: Tab; label: string; icon: React.ReactElement }) => (
@@ -213,117 +170,61 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
         setIsScanning(false);
         setIsCameraOpen(false);
       }}
-      className={`flex-1 flex flex-col items-center justify-center p-2 text-xs font-medium border-b-2 transition ${
+      className={`flex-1 flex flex-col items-center justify-center p-3 text-[10px] font-bold border-b-4 transition ${
         activeTab === tab
-          ? 'border-accent-green text-accent-green'
-          : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'
+          ? 'border-accent-green text-accent-green bg-accent-green/5'
+          : 'border-transparent text-gray-400 hover:text-gray-600'
       }`}
     >
       {icon}
-      <span className="mt-1">{label}</span>
+      <span className="mt-1 uppercase tracking-tighter">{label}</span>
     </button>
   );
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-light-card dark:bg-dark-card rounded-xl shadow-xl w-full max-w-lg h-full max-h-[95dvh] flex flex-col overflow-hidden animate-fade-in-up">
-        <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-xl font-bold">Adicionar em {mealName}</h2>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600">
-            <XIcon />
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
+      <div className="bg-white dark:bg-dark-card rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-lg h-[92dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col overflow-hidden animate-slide-in-bottom">
+        
+        {/* Header */}
+        <div className="p-5 border-b dark:border-gray-800 flex justify-between items-center bg-white dark:bg-dark-card sticky top-0 z-10">
+          <div>
+            <h2 className="text-xl font-black text-gray-800 dark:text-white">{mealName}</h2>
+            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Adicionar Alimentos</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
+            <XIcon className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="border-b dark:border-gray-700">
+        {/* Tabs */}
+        <div className="border-b dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/20">
           <div className="flex">
-            <TabButton tab="library" label="Biblioteca" icon={<BookOpenIcon className="w-5 h-5"/>} />
-            <TabButton tab="search" label="IA Busca" icon={<SearchIcon />} />
-            <TabButton tab="photo" label="IA Foto" icon={<CameraIcon />} />
+            <TabButton tab="search" label="Busca" icon={<SearchIcon className="w-5 h-5" />} />
+            <TabButton tab="photo" label="Foto IA" icon={<CameraIcon className="w-5 h-5" />} />
             <TabButton tab="barcode" label="Código" icon={<BarcodeIcon />} />
+            <TabButton tab="library" label="Livro" icon={<BookOpenIcon className="w-5 h-5"/>} />
           </div>
         </div>
 
-        <div className="p-4 overflow-y-auto flex-grow scrollbar-hide">
-          {activeTab === 'library' && (
-            <div className="space-y-4">
-               <div className="flex gap-2">
-                    <div className="relative flex-grow">
-                        <input
-                        type="text"
-                        value={librarySearch}
-                        onChange={(e) => setLibrarySearch(e.target.value)}
-                        placeholder="Buscar por nome..."
-                        className="w-full p-2 pl-8 border border-gray-300 rounded-md bg-white text-gray-900 focus:ring-2 focus:ring-accent-green outline-none"
-                        />
-                        <SearchIcon className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
-                    </div>
-                    <select 
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="p-2 border border-gray-300 rounded-md text-sm bg-white"
-                    >
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-               </div>
-
-               <div className="border dark:border-gray-700 rounded-md overflow-hidden bg-gray-50 dark:bg-gray-900/20">
-                    <ul className="divide-y dark:divide-gray-600 max-h-96 overflow-y-auto">
-                        {filteredLibrary.map(food => (
-                        <li 
-                            key={food.id} 
-                            className={`p-3 flex items-center cursor-pointer hover:bg-white dark:hover:bg-gray-800 transition-colors ${selectedFoodIds.has(food.id) ? 'bg-accent-green/10' : ''}`} 
-                            onClick={() => handleToggleSelection(food.id)}
-                        >
-                            <div className="flex-grow">
-                                <div className="flex items-center">
-                                    <p className="font-bold text-sm text-light-text dark:text-dark-text">{food.name}</p>
-                                    <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{food.category}</span>
-                                </div>
-                                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                                    P: {Math.round(food.protein)}g | C: {Math.round(food.carbs)}g | G: {Math.round(food.fat)}g (100g)
-                                </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <div className="text-right mr-2">
-                                    <p className="font-bold text-accent-green text-sm">{Math.round(food.calories)}</p>
-                                    <p className="text-[10px] text-gray-400">kcal</p>
-                                </div>
-                                <button 
-                                    onClick={(e) => handleEditInLibrary(e, food)} 
-                                    className="p-1.5 rounded-full text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition"
-                                >
-                                    <PencilIcon className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={(e) => handleDeleteFromLibrary(e, food.id)} 
-                                    className="p-1.5 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
-                                >
-                                    <TrashIcon />
-                                </button>
-                            </div>
-                        </li>
-                        ))}
-                        {filteredLibrary.length === 0 && <p className="p-4 text-center text-sm text-gray-500">Nenhum alimento encontrado na biblioteca.</p>}
-                    </ul>
-               </div>
-            </div>
-          )}
-
+        {/* Content Area */}
+        <div className="p-5 overflow-y-auto flex-grow scrollbar-hide">
           {activeTab === 'search' && (
             <div className="space-y-4">
-              <div className="flex space-x-2">
+              <div className="relative">
                 <input
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="ex: '1 xícara de aveia'"
-                  className="w-full p-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-accent-green focus:border-transparent outline-none transition"
+                  placeholder="Ex: 'Tapioca com queijo coalho'"
+                  className="w-full p-4 pl-12 border-2 border-gray-100 dark:border-gray-800 rounded-2xl bg-gray-50 dark:bg-gray-900 focus:ring-4 focus:ring-accent-green/20 focus:border-accent-green outline-none transition"
                 />
-                <button onClick={handleSearch} className="bg-accent-green text-white px-4 py-2 rounded-md font-semibold hover:bg-green-600 transition" disabled={isLoading}>
-                  {isLoading ? '...' : 'Buscar'}
+                <SearchIcon className="absolute left-4 top-4.5 w-5 h-5 text-gray-400" />
+                <button onClick={handleSearch} className="absolute right-2 top-2 bg-accent-green text-white px-4 py-2 rounded-xl font-bold hover:bg-green-600 transition shadow-lg">
+                   IR
                 </button>
               </div>
+              <p className="text-[10px] text-gray-400 text-center font-bold uppercase">Ou tente descrever a porção para mais precisão</p>
             </div>
           )}
 
@@ -331,30 +232,31 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
              isCameraOpen ? (
                 <CameraCapture onCapture={handlePhotoTaken} onClose={() => setIsCameraOpen(false)} />
             ) : (
-                <div className="text-center space-y-4 py-4">
-                    <p className="text-sm text-gray-500">Use a IA para identificar alimentos a partir de uma foto.</p>
-                    <div className="flex flex-col gap-3">
+                <div className="text-center space-y-6 py-4">
+                    <div className="w-20 h-20 bg-accent-blue/10 text-accent-blue rounded-full flex items-center justify-center mx-auto">
+                        <SparklesIcon className="w-10 h-10" />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold">Inteligência Artificial</h3>
+                        <p className="text-sm text-gray-500 max-w-[240px] mx-auto">Tire uma foto do seu prato e deixe que o calorix identifique tudo para você.</p>
+                    </div>
+                    
+                    <div className="flex flex-col gap-3 pt-4">
                         <button 
                             onClick={() => setIsCameraOpen(true)}
-                            className="w-full flex items-center justify-center space-x-2 bg-accent-blue text-white px-6 py-4 rounded-xl font-bold hover:bg-blue-600 transition shadow-lg"
+                            className="w-full flex items-center justify-center space-x-3 bg-accent-blue text-white p-5 rounded-2xl font-bold hover:bg-blue-600 transition shadow-xl active:scale-[0.98]"
                         >
-                            <CameraIcon />
-                            <span>Tirar Foto</span>
+                            <CameraIcon className="w-6 h-6" />
+                            <span>Tirar Foto Agora</span>
                         </button>
         
-                        <input
-                            type="file"
-                            id="photo-upload"
-                            accept="image/*"
-                            onChange={handleImageUpload}
-                            className="hidden"
-                        />
+                        <input type="file" id="photo-upload" accept="image/*" onChange={handleImageUpload} className="hidden" />
                         <label 
                             htmlFor="photo-upload" 
-                            className="w-full flex items-center justify-center space-x-2 cursor-pointer bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white px-6 py-4 rounded-xl font-bold hover:bg-gray-200 dark:hover:bg-gray-700 transition"
+                            className="w-full flex items-center justify-center space-x-3 cursor-pointer bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-white p-5 rounded-2xl font-bold hover:bg-gray-200 transition"
                         >
-                            <ImageIcon />
-                            <span>Enviar da Galeria</span>
+                            <ImageIcon className="w-6 h-6" />
+                            <span>Escolher da Galeria</span>
                         </label>
                     </div>
                 </div>
@@ -365,45 +267,93 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
             isScanning ? (
                 <BarcodeScanner onScan={handleBarcodeScan} onClose={() => setIsScanning(false)} />
             ) : (
-                <div className="text-center py-6">
-                    <p className="mb-4 text-sm text-gray-500">Escaneie o código de barras de produtos industrializados.</p>
-                    <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white px-6 py-4 rounded-xl font-bold hover:bg-green-600 transition inline-flex items-center justify-center w-full shadow-lg">
-                        <ScannerIcon className="h-6 w-6" />
-                        <span className="ml-2">Abrir Scanner</span>
+                <div className="text-center py-6 space-y-6">
+                    <div className="w-16 h-16 bg-accent-green/10 text-accent-green rounded-full flex items-center justify-center mx-auto">
+                        <ScannerIcon className="w-8 h-8" />
+                    </div>
+                    <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white p-5 rounded-2xl font-bold hover:bg-green-600 transition inline-flex items-center justify-center w-full shadow-lg">
+                        <span className="ml-2">Ativar Scanner</span>
                     </button>
+                    <p className="text-xs text-gray-400">Ideal para produtos com embalagem.</p>
                 </div>
             )
           )}
 
-          {isLoading && <div className="text-center p-8 flex flex-col items-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-green mb-2"></div>
-            <p className="text-sm font-semibold">Analisando dados...</p>
-          </div>}
-          {error && <div className="text-center p-4 text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/10 rounded-lg">{error}</div>}
+          {activeTab === 'library' && (
+              <div className="space-y-4">
+                  <div className="relative">
+                    <input
+                        type="text"
+                        value={librarySearch}
+                        onChange={(e) => setLibrarySearch(e.target.value)}
+                        placeholder="Pesquisar no meu histórico..."
+                        className="w-full p-3 pl-10 border border-gray-200 dark:border-gray-800 rounded-xl bg-gray-50 dark:bg-gray-900"
+                    />
+                    <SearchIcon className="absolute left-3 top-3.5 w-4 h-4 text-gray-400" />
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                      {filteredLibrary.slice(0, 15).map(food => (
+                          <div 
+                            key={food.id} 
+                            onClick={() => handleToggleSelection(food.id)}
+                            className={`p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedFoodIds.has(food.id) ? 'border-accent-green bg-accent-green/5' : 'border-gray-50 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50'}`}
+                          >
+                              <div className="flex justify-between items-center">
+                                  <span className="font-bold">{food.name}</span>
+                                  <span className="text-accent-green font-black">{food.calories} kcal</span>
+                              </div>
+                          </div>
+                      ))}
+                  </div>
+              </div>
+          )}
 
-          {(results.length > 0 && activeTab !== 'library') && (
-            <div className="mt-4 space-y-4">
-              <h3 className="font-bold text-xs uppercase tracking-wider text-gray-400">Resultados Identificados:</h3>
-              <ul className="divide-y dark:divide-gray-600 border dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800/40 overflow-hidden">
+          {/* Loading state */}
+          {isLoading && (
+              <div className="fixed inset-0 bg-white/90 dark:bg-dark-card/90 z-20 flex flex-col items-center justify-center p-8 text-center animate-fade-in">
+                <div className="relative w-24 h-24 mb-6">
+                    <div className="absolute inset-0 border-4 border-accent-green/20 rounded-full"></div>
+                    <div className="absolute inset-0 border-4 border-accent-green border-t-transparent rounded-full animate-spin"></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <SparklesIcon className="w-8 h-8 text-accent-green animate-pulse" />
+                    </div>
+                </div>
+                <h3 className="text-xl font-black mb-2">{loadingMessage}</h3>
+                <p className="text-sm text-gray-500">Isso pode levar alguns segundos dependendo da sua conexão.</p>
+              </div>
+          )}
+
+          {error && <div className="mt-4 p-4 text-red-500 text-sm font-bold bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900/30 text-center">{error}</div>}
+
+          {/* Results List */}
+          {results.length > 0 && !isLoading && (
+            <div className="mt-6 space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <h3 className="font-black text-xs uppercase tracking-widest text-gray-400">Resultados Encontrados</h3>
+                <span className="text-[10px] bg-accent-blue/10 text-accent-blue px-2 py-1 rounded-full font-bold">IA</span>
+              </div>
+              <ul className="space-y-3">
                 {results.map(food => (
                   <li 
                     key={food.id} 
-                    className={`p-4 flex items-center cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors duration-200 ${selectedFoodIds.has(food.id) ? 'bg-accent-green/10' : ''}`} 
+                    className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer ${selectedFoodIds.has(food.id) ? 'border-accent-green bg-accent-green/5 shadow-md' : 'border-gray-50 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40'}`} 
                     onClick={() => handleToggleSelection(food.id)}
                   >
-                    <div className="flex-grow">
-                      <p className="font-bold text-light-text dark:text-dark-text">{food.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {food.servingSize}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-4 ml-4">
-                      <div className="text-right">
-                          <p className="font-bold text-lg text-accent-green">{Math.round(food.calories)}</p>
-                          <p className="text-[10px] text-gray-500 dark:text-gray-400 -mt-1 uppercase font-bold">kcal</p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-grow">
+                        <p className="font-bold text-gray-800 dark:text-white">{food.name}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase mt-0.5">
+                          {food.servingSize}
+                        </p>
                       </div>
-                      <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-200 flex-shrink-0 ${selectedFoodIds.has(food.id) ? 'bg-accent-green border-accent-green' : 'border-gray-300 dark:border-gray-500'}`}>
-                        {selectedFoodIds.has(food.id) && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" /></svg>}
+                      <div className="text-right flex items-center gap-4">
+                        <div>
+                            <p className="font-black text-lg text-accent-green">{food.calories}</p>
+                            <p className="text-[9px] text-gray-400 font-bold uppercase -mt-1 text-center">kcal</p>
+                        </div>
+                        <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${selectedFoodIds.has(food.id) ? 'bg-accent-green border-accent-green' : 'border-gray-300 dark:border-gray-600'}`}>
+                            {selectedFoodIds.has(food.id) && <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="4" d="M5 13l4 4L19 7" /></svg>}
+                        </div>
                       </div>
                     </div>
                   </li>
@@ -413,136 +363,31 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           )}
         </div>
 
-        <div className="p-4 border-t dark:border-gray-700 bg-white dark:bg-dark-card shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-            {selectionSummary && (
-                <div className="mb-4 grid grid-cols-4 gap-2 text-center">
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">Kcal</span>
-                        <span className="font-bold text-sm text-accent-green">{Math.round(selectionSummary.calories)}</span>
+        {/* Footer Actions */}
+        <div className="p-5 border-t dark:border-gray-800 bg-white dark:bg-dark-card pb-10 sm:pb-5">
+            {selectionSummary ? (
+                <div className="mb-4 flex items-center justify-between bg-gray-50 dark:bg-gray-900 p-4 rounded-2xl border dark:border-gray-800">
+                    <div className="text-left">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Total Selecionado</p>
+                        <p className="text-xl font-black text-accent-green">{selectionSummary.calories} <span className="text-xs font-normal">kcal</span></p>
                     </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">Prot</span>
-                        <span className="font-bold text-sm text-red-500">{Math.round(selectionSummary.protein)}g</span>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">Carb</span>
-                        <span className="font-bold text-sm text-orange-500">{Math.round(selectionSummary.carbs)}g</span>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase">Gord</span>
-                        <span className="font-bold text-sm text-yellow-500">{Math.round(selectionSummary.fat)}g</span>
+                    <div className="flex gap-3 text-[10px] font-bold text-gray-500 uppercase border-l dark:border-gray-800 pl-4">
+                        <div><span className="block text-red-500">{selectionSummary.protein}g</span> P</div>
+                        <div><span className="block text-orange-500">{selectionSummary.carbs}g</span> C</div>
+                        <div><span className="block text-yellow-500">{selectionSummary.fat}g</span> G</div>
                     </div>
                 </div>
-            )}
+            ) : null}
+            
             <button
                 onClick={handleAddSelected}
-                disabled={selectedFoodIds.size === 0}
-                className="w-full bg-accent-green text-white p-4 rounded-xl font-bold hover:bg-green-600 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed shadow-lg active:scale-[0.98] transform"
+                disabled={selectedFoodIds.size === 0 || isLoading}
+                className="w-full bg-accent-green text-white p-5 rounded-2xl font-black text-lg hover:bg-green-600 transition disabled:bg-gray-200 dark:disabled:bg-gray-800 disabled:text-gray-400 shadow-xl active:scale-[0.98]"
             >
-                Adicionar {selectedFoodIds.size} {selectedFoodIds.size === 1 ? 'Item' : 'Itens'}
+                {selectedFoodIds.size === 0 ? 'Selecione Alimentos' : `ADICIONAR ${selectedFoodIds.size} ITEM(S)`}
             </button>
         </div>
       </div>
-
-      {/* Edit Modal for Library Food */}
-      {editingFood && (
-          <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-[60] p-4">
-              <div className="bg-light-card dark:bg-dark-card rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
-                  <div className="p-4 border-b dark:border-gray-700 flex justify-between items-center">
-                      <h3 className="text-lg font-bold">Editar Alimento (Base 100g)</h3>
-                      <button onClick={() => setEditingFood(null)}><XIcon /></button>
-                  </div>
-                  <form onSubmit={handleSaveEdit} className="p-6 space-y-4 overflow-y-auto">
-                      <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase">Nome</label>
-                          <input 
-                            type="text" 
-                            value={editingFood.name} 
-                            onChange={(e) => setEditingFood({...editingFood, name: e.target.value})}
-                            className="w-full mt-1 p-2 border rounded bg-gray-50 dark:bg-gray-700 outline-none focus:ring-2 focus:ring-accent-green"
-                          />
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase">Calorias (kcal)</label>
-                              <input 
-                                type="number" 
-                                value={editingFood.calories} 
-                                onChange={(e) => setEditingFood({...editingFood, calories: Number(e.target.value)})}
-                                className="w-full mt-1 p-2 border rounded bg-gray-50 dark:bg-gray-700"
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase">Proteínas (g)</label>
-                              <input 
-                                type="number" 
-                                value={editingFood.protein} 
-                                onChange={(e) => setEditingFood({...editingFood, protein: Number(e.target.value)})}
-                                className="w-full mt-1 p-2 border rounded bg-gray-50 dark:bg-gray-700"
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase">Carboidratos (g)</label>
-                              <input 
-                                type="number" 
-                                value={editingFood.carbs} 
-                                onChange={(e) => setEditingFood({...editingFood, carbs: Number(e.target.value)})}
-                                className="w-full mt-1 p-2 border rounded bg-gray-50 dark:bg-gray-700"
-                              />
-                          </div>
-                          <div>
-                              <label className="block text-xs font-bold text-gray-500 uppercase">Gorduras (g)</label>
-                              <input 
-                                type="number" 
-                                value={editingFood.fat} 
-                                onChange={(e) => setEditingFood({...editingFood, fat: Number(e.target.value)})}
-                                className="w-full mt-1 p-2 border rounded bg-gray-50 dark:bg-gray-700"
-                              />
-                          </div>
-                      </div>
-
-                      <div className="border-t dark:border-gray-700 pt-4">
-                        <h4 className="text-sm font-bold mb-3 text-gray-600 dark:text-gray-400 uppercase tracking-wider">Micronutrientes</h4>
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-                            {([
-                                { key: 'Cálcio', unit: 'mg' },
-                                { key: 'Ferro', unit: 'mg' },
-                                { key: 'Potássio', unit: 'mg' },
-                                { key: 'Magnésio', unit: 'mg' },
-                                { key: 'Vitamina C', unit: 'mg' },
-                                { key: 'Vitamina A', unit: 'mcg' },
-                                { key: 'Vitamina D', unit: 'mcg' },
-                            ] as {key: Micronutrient, unit: string}[]).map(({key, unit}) => (
-                                <div key={key}>
-                                    <label className="block text-[10px] font-bold text-gray-500 uppercase">{key} ({unit})</label>
-                                    <input 
-                                        type="number" 
-                                        value={editingFood.micronutrients?.[key] ?? ''} 
-                                        onChange={(e) => handleEditMicronutrient(key, e.target.value)}
-                                        className="w-full mt-1 p-1.5 border rounded bg-gray-50 dark:bg-gray-700 text-sm"
-                                        placeholder="-"
-                                    />
-                                </div>
-                            ))}
-                        </div>
-                      </div>
-
-                      <div className="pt-4">
-                        <button type="submit" className="w-full bg-accent-green text-white p-3 rounded-lg font-bold hover:bg-green-600 transition shadow-md">
-                            Salvar Alterações
-                        </button>
-                        <button 
-                            type="button" 
-                            onClick={() => setEditingFood(null)}
-                            className="w-full mt-2 text-gray-500 text-sm font-semibold p-2"
-                        >
-                            Cancelar
-                        </button>
-                      </div>
-                  </form>
-              </div>
-          </div>
-      )}
     </div>
   );
 };

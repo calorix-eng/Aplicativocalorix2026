@@ -1,13 +1,10 @@
 
 import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { HomeIcon } from './icons/HomeIcon';
 import { BellIcon } from './icons/BellIcon';
 import { BookmarkIcon } from './icons/BookmarkIcon';
 import { ShieldCheckIcon } from './icons/ShieldCheckIcon';
 import { UserCircleIcon } from './icons/UserCircleIcon';
-import { XIcon } from './icons/XIcon';
-import { LogoIcon } from './icons/LogoIcon';
 
 type CommunityTab = 'home' | 'notifications' | 'saved' | 'guidelines' | 'my-posts';
 
@@ -15,16 +12,12 @@ interface CommunitySidebarProps {
     activeTab: CommunityTab;
     onTabChange: (tab: CommunityTab) => void;
     unreadCount: number;
-    isOpen?: boolean;
-    onClose?: () => void;
 }
 
 const CommunitySidebar: React.FC<CommunitySidebarProps> = ({ 
     activeTab, 
     onTabChange, 
-    unreadCount, 
-    isOpen = false, 
-    onClose 
+    unreadCount 
 }) => {
 
     const NavItem: React.FC<{
@@ -36,105 +29,103 @@ const CommunitySidebar: React.FC<CommunitySidebarProps> = ({
         return (
             <button
                 onClick={() => onTabChange(tab)}
-                className={`flex items-center w-full p-4 rounded-xl text-left font-bold transition-all duration-200 ${
+                className={`flex flex-col lg:flex-row items-center justify-center lg:justify-start w-full p-2 lg:p-4 rounded-xl transition-all duration-200 ${
                     isActive
-                        ? 'bg-accent-green/10 text-accent-green scale-[1.02]'
-                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        ? 'text-accent-green lg:bg-accent-green/10 scale-110 lg:scale-100'
+                        : 'text-gray-500 lg:text-gray-600 dark:text-gray-400 lg:dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50'
                 }`}
             >
-                <div className="flex-shrink-0">{icon}</div>
-                <span className="ml-4 text-base">{label}</span>
+                <div className="flex-shrink-0 relative">
+                    {icon}
+                </div>
+                <span className={`text-[10px] lg:text-base font-bold mt-1 lg:mt-0 lg:ml-4 ${isActive ? 'opacity-100' : 'opacity-70 lg:opacity-100'}`}>
+                    {label}
+                </span>
+                {isActive && (
+                    <div className="lg:hidden absolute -bottom-1 w-1 h-1 bg-accent-green rounded-full" />
+                )}
             </button>
         );
     };
 
-    const SidebarContent = () => (
-        <div className="flex flex-col space-y-2">
-            <NavItem
-                tab="home"
-                label="Página Inicial"
-                icon={<HomeIcon className="h-6 w-6" />}
-            />
-            <NavItem
-                tab="my-posts"
-                label="Meu Perfil"
-                icon={<UserCircleIcon className="h-6 w-6" />}
-            />
-            <NavItem
-                tab="notifications"
-                label="Notificações"
-                icon={<BellIcon className="h-6 w-6" unreadCount={unreadCount} />}
-            />
-            <NavItem
-                tab="saved"
-                label="Salvos"
-                icon={<BookmarkIcon className="h-6 w-6" />}
-            />
-            <NavItem
-                tab="guidelines"
-                label="Diretrizes"
-                icon={<ShieldCheckIcon className="h-6 w-6" />}
-            />
-        </div>
-    );
-
     return (
         <>
-            {/* Desktop Sidebar (Persistent) */}
-            <div className="hidden lg:block bg-white dark:bg-dark-card p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 sticky top-8">
+            {/* Mobile: Fixed Bottom Navigation Bar */}
+            <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-[100] bg-white/95 dark:bg-dark-card/95 backdrop-blur-md border-t border-gray-100 dark:border-gray-800 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-8px_30px_rgba(0,0,0,0.08)]">
+                <div className="flex items-center justify-around h-14 max-w-md mx-auto">
+                    <NavItem
+                        tab="home"
+                        label="Início"
+                        icon={<HomeIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="my-posts"
+                        label="Perfil"
+                        icon={<UserCircleIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="notifications"
+                        label="Alertas"
+                        icon={<BellIcon className="h-6 w-6" unreadCount={unreadCount} />}
+                    />
+                    <NavItem
+                        tab="saved"
+                        label="Salvos"
+                        icon={<BookmarkIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="guidelines"
+                        label="Regras"
+                        icon={<ShieldCheckIcon className="h-6 w-6" />}
+                    />
+                </div>
+            </nav>
+
+            {/* Desktop: Static Sidebar Panel */}
+            <aside className="hidden lg:block bg-white dark:bg-dark-card p-4 rounded-3xl shadow-sm border border-gray-100 dark:border-gray-800 sticky top-8">
                 <div className="mb-6 px-2 flex items-center space-x-2">
-                    <LogoIcon />
+                    <div className="w-8 h-8 bg-accent-green rounded-lg flex items-center justify-center text-white">
+                        <HomeIcon className="w-5 h-5" />
+                    </div>
                     <span className="text-xl font-bold text-accent-green font-display">Comunidade</span>
                 </div>
-                <SidebarContent />
-            </div>
+                
+                <div className="flex flex-col space-y-1">
+                    <NavItem
+                        tab="home"
+                        label="Página Inicial"
+                        icon={<HomeIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="my-posts"
+                        label="Meu Perfil"
+                        icon={<UserCircleIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="notifications"
+                        label="Notificações"
+                        icon={<BellIcon className="h-6 w-6" unreadCount={unreadCount} />}
+                    />
+                    <NavItem
+                        tab="saved"
+                        label="Salvos"
+                        icon={<BookmarkIcon className="h-6 w-6" />}
+                    />
+                    <NavItem
+                        tab="guidelines"
+                        label="Diretrizes"
+                        icon={<ShieldCheckIcon className="h-6 w-6" />}
+                    />
+                </div>
 
-            {/* Mobile Sidebar (Drawer) */}
-            <AnimatePresence>
-                {isOpen && (
-                    <>
-                        {/* Backdrop */}
-                        <motion.div 
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={onClose}
-                            className="lg:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-[50]"
-                        />
-
-                        {/* Drawer Panel */}
-                        <motion.div 
-                            initial={{ x: "-100%" }}
-                            animate={{ x: 0 }}
-                            exit={{ x: "-100%" }}
-                            transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                            className="lg:hidden fixed top-0 left-0 bottom-0 w-[280px] bg-white dark:bg-dark-card z-[60] shadow-2xl flex flex-col"
-                        >
-                            <div className="p-6 flex justify-between items-center border-b dark:border-gray-800">
-                                <div className="flex items-center space-x-2">
-                                    <LogoIcon />
-                                    <span className="text-lg font-bold text-accent-green font-display">calorix</span>
-                                </div>
-                                <button 
-                                    onClick={onClose}
-                                    className="p-2 bg-gray-100 dark:bg-gray-800 rounded-full text-gray-500"
-                                >
-                                    <XIcon className="w-5 h-5" />
-                                </button>
-                            </div>
-
-                            <div className="flex-grow p-4 overflow-y-auto">
-                                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest px-4 mb-4">Navegação</h3>
-                                <SidebarContent />
-                            </div>
-
-                            <div className="p-6 border-t dark:border-gray-800">
-                                <p className="text-xs text-center text-gray-400 font-medium">© 2025 calorix Community</p>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
+                <div className="mt-8 pt-6 border-t border-gray-100 dark:border-gray-800 px-4">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Sua Jornada</p>
+                    <div className="mt-4 flex items-center space-x-3 grayscale opacity-60">
+                        <div className="w-8 h-8 rounded-full bg-accent-blue/20" />
+                        <div className="h-2 w-16 bg-gray-200 dark:bg-gray-700 rounded-full" />
+                    </div>
+                </div>
+            </aside>
         </>
     );
 };
