@@ -75,8 +75,8 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture, onClose }) => 
         // Aplica um leve sharpening via filtros se suportado para ajudar a IA
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // JPEG com 80% de qualidade é o sweet spot entre tamanho e detalhe para IA
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        // Alterado de 0.8 para 0.6 conforme solicitado para reduzir o payload enviado à IA
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         const [mimeTypeInfo, data] = dataUrl.split(',');
         const mimeType = mimeTypeInfo.split(':')[1].split(';')[0];
         onCapture({ mimeType, data });

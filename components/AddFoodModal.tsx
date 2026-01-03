@@ -82,6 +82,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     
     try {
         // Redimensionamento agressivo para garantir funcionamento em qualquer rede (Wi-Fi/4G)
+        // Alterado para qualidade 0.6 conforme solicitado
         const optimizedBase64 = await resizeImage(base64Image, 768, 768, 0.6);
         
         setLoadingMessage("Identificando alimentos...");
