@@ -1,13 +1,14 @@
 
 import { create } from 'zustand';
 import { Post, Comment, ReactionType } from '../types';
+import { deleteCommunityPost } from '../services/firestoreService';
 
 interface CommunityState {
   posts: Post[];
   hasNewPosts: boolean;
   setPosts: (posts: Post[]) => void;
   addPost: (post: Post) => void;
-  deletePost: (postId: string) => void;
+  deletePost: (postId: string) => Promise<void>;
   addComment: (postId: string, comment: Comment, parentCommentId?: string) => void;
   toggleReaction: (postId: string, reaction: ReactionType, userEmail: string) => void;
   toggleCommentReaction: (postId: string, commentId: string, reaction: ReactionType, userEmail: string) => void;
@@ -32,11 +33,21 @@ export const useCommunityStore = create<CommunityState>((set) => ({
     return { posts: newPosts };
   }),
 
-  deletePost: (postId) => set((state) => {
-    const newPosts = state.posts.filter(p => p.id !== postId);
-    localStorage.setItem('communityPosts', JSON.stringify(newPosts));
-    return { posts: newPosts };
-  }),
+  deletePost: async (postId) => {
+    try {
+        // Tenta deletar do Firebase primeiro
+        await deleteCommunityPost(postId);
+    } catch (error) {
+        console.error("Erro ao deletar post do Firestore:", error);
+    }
+
+    // Sempre atualiza o estado local para resposta imediata na UI
+    set((state) => {
+        const newPosts = state.posts.filter(p => p.id !== postId);
+        localStorage.setItem('communityPosts', JSON.stringify(newPosts));
+        return { posts: newPosts };
+    });
+  },
 
   addComment: (postId, comment, parentCommentId) => set((state) => {
     const newPosts = state.posts.map(p => {
@@ -66,14 +77,12 @@ export const useCommunityStore = create<CommunityState>((set) => ({
       
       const alreadyInTarget = (reactions[reaction] || []).includes(userEmail);
 
-      // Clean user from ALL reaction lists first
       REACTION_TYPES.forEach(type => {
         if (reactions[type]) {
           reactions[type] = reactions[type]!.filter(email => email !== userEmail);
         }
       });
 
-      // If they weren't in the target list, add them now (mutually exclusive logic)
       if (!alreadyInTarget) {
         reactions[reaction] = [...(reactions[reaction] || []), userEmail];
       }
@@ -91,14 +100,12 @@ export const useCommunityStore = create<CommunityState>((set) => ({
                 const reactions = { ...c.reactions };
                 const alreadyInTarget = (reactions[reaction] || []).includes(userEmail);
 
-                // Clean user from ALL reaction lists in the comment
                 REACTION_TYPES.forEach(type => {
                     if (reactions[type]) {
                         reactions[type] = reactions[type]!.filter(email => email !== userEmail);
                     }
                 });
 
-                // Add to new reaction if it wasn't the one already active
                 if (!alreadyInTarget) {
                     reactions[reaction] = [...(reactions[reaction] || []), userEmail];
                 }

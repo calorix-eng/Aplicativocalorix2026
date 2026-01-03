@@ -5,6 +5,7 @@ import {
     getDoc,
     setDoc,
     updateDoc,
+    deleteDoc,
     onSnapshot,
     collection,
     query,
@@ -49,7 +50,6 @@ export const updateUserProfile = async (userId: string, data: Partial<UserProfil
 
 // --- Daily Logs ---
 
-// Structure: /users/{userId}/dailyLogs/{dateString}
 export const onDailyLogsSnapshot = (userId: string, callback: (logs: Record<string, Omit<DailyLog, 'micronutrientIntake'>>) => void) => {
     if (!db) return () => {};
     const logsCollectionRef = collection(db, 'users', userId, 'dailyLogs');
@@ -80,7 +80,6 @@ export const onCommunityPostsSnapshot = (callback: (posts: Post[]) => void) => {
         const posts: Post[] = [];
         querySnapshot.forEach((docSnap) => {
             const data = docSnap.data();
-            // Convert Firestore Timestamp to number if needed
             const timestamp = data.timestamp instanceof Timestamp ? data.timestamp.toMillis() : data.timestamp;
             posts.push({ id: docSnap.id, ...data, timestamp } as Post);
         });
@@ -101,6 +100,12 @@ export const updateCommunityPost = async (postId: string, data: Partial<Post>): 
     if (!db) return;
     const postDocRef = doc(db, 'communityPosts', postId);
     await updateDoc(postDocRef, data);
+};
+
+export const deleteCommunityPost = async (postId: string): Promise<void> => {
+    if (!db) return;
+    const postDocRef = doc(db, 'communityPosts', postId);
+    await deleteDoc(postDocRef);
 };
 
 
@@ -148,7 +153,6 @@ export const markAllNotificationsAsRead = async (userId: string): Promise<void> 
 export const processActionQueue = async (userId: string, actions: Action[]): Promise<void> => {
     if (!db) throw new Error("Firestore not available");
 
-    // We need to fetch all relevant daily logs first to avoid race conditions
     const logDates = new Set<string>(actions.filter(a => a.payload.date).map(a => a.payload.date));
     const logsToUpdate: Record<string, any> = {};
 
@@ -190,7 +194,6 @@ export const processActionQueue = async (userId: string, actions: Action[]): Pro
     });
     
     const batch = writeBatch(db);
-    // Write all updated logs to the batch
     for (const dateStr in logsToUpdate) {
         const logDocRef = doc(db, 'users', userId, 'dailyLogs', dateStr);
         batch.set(logDocRef, logsToUpdate[dateStr], { merge: true });

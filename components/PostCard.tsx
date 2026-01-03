@@ -40,13 +40,15 @@ const PostCard: React.FC<PostCardProps> = ({
     const dislikeInfo = getReactionInfo('dislike');
 
     const isSaved = currentUserProfile.savedPosts?.includes(post.id);
-    const isOwnPost = currentUserAuth.email === post.author.email;
+    
+    // Mais seguro comparar por UID para evitar problemas com caixa alta em emails
+    const isOwnPost = currentUserAuth.uid === post.author.uid;
     const isFollowing = currentUserProfile.following?.includes(post.author.email);
 
-    const handleDelete = (e: React.MouseEvent) => {
+    const handleDelete = async (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (window.confirm("Deseja realmente excluir esta publicação? Esta ação é permanente e removerá todos os comentários e reações vinculados.")) {
-            deletePost(post.id);
+        if (window.confirm("Deseja realmente excluir esta publicação? Esta ação é permanente.")) {
+            await deletePost(post.id);
         }
     };
 
@@ -84,7 +86,7 @@ const PostCard: React.FC<PostCardProps> = ({
                           className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-all group"
                           title="Excluir publicação"
                         >
-                            <TrashIcon />
+                            <TrashIcon className="w-5 h-5" />
                         </button>
                     ) : (
                         <button 
@@ -165,13 +167,11 @@ const PostCard: React.FC<PostCardProps> = ({
                 </motion.button>
             </div>
 
-            {/* Comments Drawer (Modal) */}
             <AnimatePresence>
               {isCommentsOpen && (
                 <CommentsModal 
                   post={post} 
                   userProfile={currentUserProfile} 
-                  // FIX: Passed currentUserEmail to CommentsModal.
                   currentUserEmail={currentUserAuth.email}
                   onClose={() => setIsCommentsOpen(false)} 
                 />

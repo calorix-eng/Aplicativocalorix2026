@@ -1,9 +1,10 @@
+
 import React from 'react';
 
-export const TrashIcon: React.FC = () => (
+export const TrashIcon: React.FC<{ className?: string }> = ({ className }) => (
     <svg 
         xmlns="http://www.w3.org/2000/svg" 
-        className="h-5 w-5" 
+        className={className || "h-5 w-5"} 
         fill="none" 
         viewBox="0 0 24 24" 
         stroke="currentColor" 
