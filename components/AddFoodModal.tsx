@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Food, Micronutrient } from '../types';
 import { getNutritionFromImage, getNutritionFromText, getNutritionFromBarcode } from '../services/geminiService';
-import { fileToBase64, resizeImage } from '../utils/fileUtils';
+import { fileToBase64, resizeImage, resizeImageFile } from '../utils/fileUtils';
 import { SearchIcon } from './icons/SearchIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { BarcodeIcon } from './icons/BarcodeIcon';
@@ -82,11 +82,9 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     
     try {
         // Redimensionamento agressivo para garantir funcionamento em qualquer rede (Wi-Fi/4G)
-        // Passamos a imagem base64 (pode conter ou não o prefixo, resizeImage agora trata)
         const optimizedBase64 = await resizeImage(base64Image, 768, 768, 0.6);
         
         setLoadingMessage("Identificando alimentos...");
-        // A API Gemini espera a string base64 pura sem prefixo (resizeImage já garante isso no retorno)
         const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
     } catch (e) {
@@ -100,19 +98,29 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
+      
+      setIsLoading(true);
+      setLoadingMessage("Lendo foto da galeria...");
+      setError(null);
+      
       try {
-        const { mimeType, full } = await fileToBase64(file);
-        // Passamos a URL de dados completa para o processador
-        processAndAnalyzeImage(full, mimeType);
+        // Processa o arquivo File diretamente para maior performance e sucesso em arquivos grandes
+        const optimizedBase64 = await resizeImageFile(file, 768, 768, 0.6);
+        
+        setLoadingMessage("Identificando alimentos...");
+        const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
+        processResults(foundFoods);
       } catch (err) {
-        setError('Erro ao ler o arquivo da galeria.');
+        console.error("Erro no upload da galeria:", err);
+        setError('Falha ao processar imagem da galeria. Verifique as permissões ou tente outra foto.');
+      } finally {
+        setIsLoading(false);
+        e.target.value = ''; // Limpa o input
       }
-      e.target.value = ''; // Limpa o input
   };
 
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
-      // Aqui 'data' é base64 puro vindo do CameraCapture
       processAndAnalyzeImage(data, mimeType);
   };
 

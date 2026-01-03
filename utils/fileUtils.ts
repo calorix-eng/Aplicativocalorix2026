@@ -1,4 +1,7 @@
 
+/**
+ * Converte um File para Base64 (usado apenas quando necessário).
+ */
 export const fileToBase64 = (file: File): Promise<{mimeType: string, data: string, full: string}> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -14,15 +17,62 @@ export const fileToBase64 = (file: File): Promise<{mimeType: string, data: strin
 };
 
 /**
+ * Redimensiona um objeto File diretamente para evitar problemas de memória com strings base64 gigantes.
+ * Retorna a string base64 pura (sem prefixo) para o SDK da Gemini.
+ */
+export const resizeImageFile = (file: File, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        
+        img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+
+            if (width > height) {
+                if (width > maxWidth) {
+                    height *= maxWidth / width;
+                    width = maxWidth;
+                }
+            } else {
+                if (height > maxHeight) {
+                    width *= maxHeight / height;
+                    height = maxHeight;
+                }
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                ctx.drawImage(img, 0, 0, width, height);
+            }
+            
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            URL.revokeObjectURL(url);
+            resolve(dataUrl.split(',')[1]);
+        };
+
+        img.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Erro ao carregar imagem para redimensionamento."));
+        };
+
+        img.src = url;
+    });
+};
+
+/**
  * Redimensiona e comprime uma imagem em base64.
- * Essencial para análise em tempo real e economia de banda/armazenamento.
- * Retorna apenas o conteúdo base64 (sem prefixo) para compatibilidade com o SDK Gemini.
+ * Retorna apenas o conteúdo base64 (sem prefixo).
  */
 export const resizeImage = (base64Str: string, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<string> => {
     return new Promise((resolve) => {
         const img = new Image();
         
-        // Garante que a imagem tenha o prefixo necessário para carregar no objeto Image
         if (!base64Str.startsWith('data:')) {
             img.src = `data:image/jpeg;base64,${base64Str}`;
         } else {
@@ -54,12 +104,10 @@ export const resizeImage = (base64Str: string, maxWidth: number = 768, maxHeight
                 ctx.drawImage(img, 0, 0, width, height);
             }
             
-            // Retorna apenas a string base64 sem o prefixo
             const dataUrl = canvas.toDataURL('image/jpeg', quality);
             resolve(dataUrl.split(',')[1]);
         };
         img.onerror = () => {
-            // Em caso de erro, retorna o conteúdo original (removendo prefixo se houver)
             resolve(base64Str.includes(',') ? base64Str.split(',')[1] : base64Str);
         };
     });
