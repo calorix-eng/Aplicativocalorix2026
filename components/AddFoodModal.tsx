@@ -82,14 +82,15 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     
     try {
         // Redimensionamento agressivo para garantir funcionamento em qualquer rede (Wi-Fi/4G)
-        // Alterado para qualidade 0.6 conforme solicitado
+        // Passamos a imagem base64 (pode conter ou não o prefixo, resizeImage agora trata)
         const optimizedBase64 = await resizeImage(base64Image, 768, 768, 0.6);
         
         setLoadingMessage("Identificando alimentos...");
+        // A API Gemini espera a string base64 pura sem prefixo (resizeImage já garante isso no retorno)
         const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
     } catch (e) {
-        console.error(e);
+        console.error("Análise de imagem falhou:", e);
         setError('Falha na análise. Verifique se a foto está clara e tente novamente.');
     } finally {
         setIsLoading(false);
@@ -99,13 +100,19 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      const { mimeType, data } = await fileToBase64(file);
-      // 'data' aqui já é base64 puro do fileToBase64
-      processAndAnalyzeImage(data, mimeType);
+      try {
+        const { mimeType, full } = await fileToBase64(file);
+        // Passamos a URL de dados completa para o processador
+        processAndAnalyzeImage(full, mimeType);
+      } catch (err) {
+        setError('Erro ao ler o arquivo da galeria.');
+      }
+      e.target.value = ''; // Limpa o input
   };
 
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
+      // Aqui 'data' é base64 puro vindo do CameraCapture
       processAndAnalyzeImage(data, mimeType);
   };
 
