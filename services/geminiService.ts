@@ -38,6 +38,61 @@ const foodArraySchema = {
     items: foodSchema
 };
 
+const recipeSchema = {
+    type: Type.OBJECT,
+    properties: {
+        id: { type: Type.STRING },
+        name: { type: Type.STRING },
+        description: { type: Type.STRING },
+        category: { type: Type.STRING },
+        timeInMinutes: { type: Type.NUMBER },
+        totalCalories: { type: Type.NUMBER },
+        totalProtein: { type: Type.NUMBER },
+        totalCarbs: { type: Type.NUMBER },
+        totalFat: { type: Type.NUMBER },
+        imagePrompt: { type: Type.STRING, description: "Prompt em inglês para gerar imagem deste prato." },
+        ingredients: {
+            type: Type.ARRAY,
+            items: foodSchema
+        },
+        instructions: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING }
+        }
+    },
+    required: ["name", "description", "category", "timeInMinutes", "totalCalories", "ingredients", "instructions"]
+};
+
+const workoutSchema = {
+    type: Type.OBJECT,
+    properties: {
+        id: { type: Type.STRING },
+        name: { type: Type.STRING },
+        duration_min: { type: Type.NUMBER },
+        intensity: { type: Type.STRING },
+        calories_estimated: { type: Type.NUMBER },
+        exercises: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    id: { type: Type.STRING },
+                    name: { type: Type.STRING },
+                    sets: { type: Type.STRING },
+                    reps: { type: Type.STRING },
+                    rest_s: { type: Type.NUMBER },
+                    muscle_group: { type: Type.STRING },
+                    image_prompt: { type: Type.STRING, description: "Prompt em inglês para ilustrar o exercício." }
+                },
+                required: ["name", "sets", "reps", "rest_s"]
+            }
+        }
+    },
+    required: ["name", "duration_min", "exercises", "calories_estimated"]
+};
+
+// --- Funções de Nutrição ---
+
 export const getNutritionFromImage = async (base64Image: string, mimeType: string): Promise<Food[]> => {
     try {
         const imagePart = {
@@ -110,12 +165,173 @@ export const getNutritionFromBarcode = async (barcode: string): Promise<Food[]> 
     }
 };
 
-// ... (resto das funções de sugestão de refeição, receitas e treinos mantidas como estão)
-export const getMealRecommendations = async (userProfile: UserProfile, consumed: any): Promise<MealSuggestion[]> => { /* manter original */ return []; };
-export const getRecipes = async (goal: any, preferences: any, userProfile: any): Promise<Recipe[]> => { /* manter original */ return []; };
-export const parseWorkoutFromImage = async (base64Image: string, mimeType: string): Promise<Workout | null> => { /* manter original */ return null; };
-export const getExercisesFromImage = async (base64Image: string, mimeType: string): Promise<string[]> => { /* manter original */ return []; };
-export const getMotivationalMessage = async (userName: string, coach: any): Promise<string> => { /* manter original */ return ""; };
-export const generateWorkout = async (userProfile: any, equipment: any, duration: any, level: any): Promise<Workout | null> => { /* manter original */ return null; };
-export const generateAiImage = async (prompt: string, type: 'food' | 'fitness' = 'food'): Promise<string | null> => { /* manter original */ return null; };
+// --- Funções do Coach e Recomendações ---
+
+export const getMotivationalMessage = async (userName: string, coach: any): Promise<string> => {
+    try {
+        const prompt = `Aja como um coach de saúde e fitness chamado ${coach.name}. O usuário se chama ${userName}. Escreva uma mensagem motivacional curta (máximo 2 frases) para o dashboard do app, incentivando o usuário a manter o foco em sua dieta e exercícios hoje. Seja empático, direto e inspirador. Não use emojis em excesso.`;
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+        });
+        
+        return response.text?.trim() || "A persistência é o caminho para o sucesso. Continue focado nas suas metas hoje!";
+    } catch (error) {
+        return "Cada pequena escolha saudável hoje constrói o seu resultado de amanhã. Vamos com tudo!";
+    }
+};
+
+export const getMealRecommendations = async (userProfile: UserProfile, consumed: any): Promise<MealSuggestion[]> => {
+    try {
+        const prompt = `Com base no perfil do usuário (Meta: ${userProfile.goal}) e no que ele já consumiu hoje (${consumed.calories}kcal, P:${consumed.protein}g, C:${consumed.carbs}g, G:${consumed.fat}g), sugira 3 opções de refeições saudáveis (Café da Manhã, Almoço ou Jantar) para ajudá-lo a atingir suas metas diárias. Retorne um array JSON.`;
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            mealCategory: { type: Type.STRING },
+                            reasoning: { type: Type.STRING },
+                            food: foodSchema
+                        },
+                        required: ["mealCategory", "reasoning", "food"]
+                    }
+                }
+            }
+        });
+
+        return JSON.parse(response.text.trim());
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+};
+
+export const getRecipes = async (goal: string, preferences: string, userProfile: UserProfile): Promise<Recipe[]> => {
+    try {
+        const prompt = `Crie 3 receitas saudáveis e detalhadas para o objetivo: ${goal}. Preferências do usuário: ${preferences}. Nível de atividade: ${userProfile.activityLevel}. Retorne um array JSON seguindo o esquema.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: recipeSchema
+                }
+            }
+        });
+
+        const recipes = JSON.parse(response.text.trim());
+        return recipes.map((r: any) => ({ ...r, id: crypto.randomUUID() }));
+    } catch (error) {
+        console.error(error);
+        return [];
+    }
+};
+
+// --- Funções de Treino ---
+
+export const generateWorkout = async (userProfile: UserProfile, equipment: string[], duration: number, level: string): Promise<Workout | null> => {
+    try {
+        const prompt = `Crie uma rotina de treino personalizada para um usuário com objetivo de ${userProfile.goal}. Equipamentos disponíveis: ${equipment.join(', ')}. Duração: ${duration} minutos. Nível: ${level}. Retorne um objeto JSON seguindo o esquema de treino.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-pro-preview', // Pro para raciocínio de treino complexo
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: workoutSchema
+            }
+        });
+
+        const workout = JSON.parse(response.text.trim());
+        return { ...workout, id: crypto.randomUUID(), date: new Date().toISOString() };
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+};
+
+export const parseWorkoutFromImage = async (base64Image: string, mimeType: string): Promise<Workout | null> => {
+    try {
+        const imagePart = {
+            inlineData: { mimeType, data: base64Image }
+        };
+        const prompt = `Esta é uma foto de uma ficha de academia ou plano de exercícios. Extraia todos os exercícios, séries, repetições e tempo de descanso. Se houver nomes de exercícios, mantenha-os. Estime as calorias totais queimadas para esse treino completo. Retorne JSON seguindo o esquema de workout.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: { parts: [imagePart, { text: prompt }] },
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: workoutSchema
+            }
+        });
+
+        const workout = JSON.parse(response.text.trim());
+        return { ...workout, id: crypto.randomUUID(), date: new Date().toISOString() };
+    } catch (error) {
+        console.error(error);
+        return null;
+    }
+};
+
+export const getExercisesFromImage = async (base64Image: string, mimeType: string): Promise<string[]> => {
+    try {
+        const imagePart = {
+            inlineData: { mimeType, data: base64Image }
+        };
+        const prompt = `Liste apenas os nomes dos exercícios físicos identificados nesta imagem, separados por vírgula.`;
+        
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: { parts: [imagePart, { text: prompt }] }
+        });
+
+        return response.text?.split(',').map(s => s.trim()) || [];
+    } catch (error) {
+        return [];
+    }
+};
+
+// --- Geração de Imagens ---
+
+export const generateAiImage = async (prompt: string, type: 'food' | 'fitness' = 'food'): Promise<string | null> => {
+    try {
+        const style = type === 'food' 
+            ? "Professional food photography, appetizing, high resolution, soft studio lighting" 
+            : "Fitness lifestyle photography, energetic, high quality, realistic cinematic lighting";
+        
+        const fullPrompt = `${prompt}. ${style}. White background or natural environment.`;
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: [{ text: fullPrompt }],
+            config: {
+                imageConfig: {
+                    aspectRatio: "1:1"
+                }
+            }
+        });
+
+        for (const part of response.candidates[0].content.parts) {
+            if (part.inlineData) {
+                return `data:image/png;base64,${part.inlineData.data}`;
+            }
+        }
+        return null;
+    } catch (error) {
+        console.error("Image generation failed:", error);
+        return null;
+    }
+};
+
 export const generateExerciseImage = (prompt: string) => generateAiImage(prompt, 'fitness');
