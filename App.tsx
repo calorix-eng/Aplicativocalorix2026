@@ -5,6 +5,7 @@ import { UserProfile, DailyLog, Food, MealCategory, AuthUser, Post, AppNotificat
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
 import AddFoodModal from './components/AddFoodModal';
+import EditFoodModal from './components/EditFoodModal';
 import Header from './components/Header';
 import { calculateNutritionalGoals } from './utils/nutritionUtils';
 import ProfileModal, { ProfileTab } from './components/ProfileModal';
@@ -46,9 +47,10 @@ const App: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [toast, setToast] = useState<{ message: string; id: number } | null>(null);
   const [mealToAdd, setMealToAdd] = useState<MealCategory | null>(null);
+  const [foodToEdit, setFoodToEdit] = useState<{ food: Food, mealName: string } | null>(null);
   const [initialProfileTab, setInitialProfileTab] = useState<ProfileTab>('profile');
   const [showCoach, setShowCoach] = useState(false);
-  const [modals, setModals] = useState({ profile: false, addFood: false, sidebar: false, quickView: false, reminders: false, challenges: false, achievements: false, notifications: false, password: false, premium: false });
+  const [modals, setModals] = useState({ profile: false, addFood: false, editFood: false, sidebar: false, quickView: false, reminders: false, challenges: false, achievements: false, notifications: false, password: false, premium: false });
 
   const communityUpdateUserMetadata = useCommunityStore(state => state.updateUserMetadata);
   const setFollowingStore = useCommunityStore(state => state.setFollowingStore);
@@ -58,14 +60,12 @@ const App: React.FC = () => {
   const showToast = useCallback((msg: string) => setToast({ message: msg, id: Date.now() }), []);
   const updateModal = (key: keyof typeof modals, val: boolean) => setModals(p => ({ ...p, [key]: val }));
 
-  // Sincroniza a lista de seguidos do perfil com o Store do Zustand ao iniciar
   useEffect(() => {
     if (userProfile?.following) {
       setFollowingStore(userProfile.following);
     }
   }, [userProfile?.following, setFollowingStore]);
 
-  // Dynamic Calculation of Micronutrients for the selected date
   const selectedDateLog = useMemo((): DailyLog => {
     const rawLog = dailyLogs[dateStr] || { meals: [], waterIntake: 0, workouts: [] };
     const micronutrientIntake: MicronutrientIntake = {};
@@ -81,10 +81,7 @@ const App: React.FC = () => {
       });
     });
 
-    return {
-      ...rawLog,
-      micronutrientIntake
-    };
+    return { ...rawLog, micronutrientIntake };
   }, [dailyLogs, dateStr]);
 
   useEffect(() => {
@@ -101,36 +98,6 @@ const App: React.FC = () => {
     }
   }, [userProfile, authUser, setUserProfile]);
 
-  const handleFollowUser = useCallback((email: string) => {
-    if (!userProfile) return;
-    const isFollowing = userProfile.following?.includes(email);
-    
-    // Atualiza localmente no perfil (LocalStorage)
-    setUserProfile({
-        ...userProfile,
-        following: isFollowing 
-            ? userProfile.following?.filter(e => e !== email)
-            : [...(userProfile.following || []), email]
-    });
-
-    // Atualiza no Zustand (Global Community Store)
-    toggleFollowStore(email);
-    
-    showToast(isFollowing ? "Deixou de seguir." : "Agora você está seguindo!");
-  }, [userProfile, setUserProfile, toggleFollowStore, showToast]);
-
-  const handleSavePost = useCallback((postId: string) => {
-    if (!userProfile) return;
-    const isSaved = userProfile.savedPosts?.includes(postId);
-    setUserProfile({
-        ...userProfile,
-        savedPosts: isSaved
-            ? userProfile.savedPosts?.filter(id => id !== postId)
-            : [...(userProfile.savedPosts || []), postId]
-    });
-    showToast(isSaved ? "Removido dos salvos." : "Publicação salva!");
-  }, [userProfile, setUserProfile, showToast]);
-
   const handleAddFoodsToLog = useCallback((foods: Food[], mealName: string) => {
     setDailyLogs(prev => {
       const currentLog = prev[dateStr] || { meals: [], waterIntake: 0 };
@@ -146,6 +113,22 @@ const App: React.FC = () => {
     });
     updateModal('addFood', false);
     showToast(`${foods.length} itens adicionados!`);
+  }, [dateStr, showToast]);
+
+  const handleUpdateFood = useCallback((updatedFood: Food, mealName: string) => {
+    setDailyLogs(prev => {
+      const currentLog = prev[dateStr];
+      if (!currentLog) return prev;
+      const updatedMeals = currentLog.meals.map(m => {
+        if (m.name === mealName) {
+          return { ...m, items: m.items.map(i => i.id === updatedFood.id ? updatedFood : i) };
+        }
+        return m;
+      });
+      return { ...prev, [dateStr]: { ...currentLog, meals: updatedMeals } };
+    });
+    updateModal('editFood', false);
+    showToast("Alimento atualizado!");
   }, [dateStr, showToast]);
 
   const handleDeleteFood = useCallback((mealName: string, foodId: string) => {
@@ -170,27 +153,13 @@ const App: React.FC = () => {
     showToast("Treino registrado! 💪");
   }, [dateStr, showToast]);
 
-  const handleSharePost = useCallback(async (text: string) => {
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'calorix Community', text, url: 'https://calorix.app' });
-      } else {
-        await navigator.clipboard.writeText(text);
-        showToast("Texto copiado!");
-      }
-    } catch (e) {}
-  }, [showToast]);
-
   const handleSaveProfile = useCallback((profileData: Partial<UserProfile>, mealCategories: MealCategory[]) => {
     if (!userProfile || !authUser) return;
     const updatedProfile = { ...userProfile, ...profileData, mealCategories };
     setUserProfile(updatedProfile);
-    
-    // Sincroniza metadados na comunidade
     if (profileData.name || profileData.avatar) {
       communityUpdateUserMetadata(authUser.uid, profileData.name || userProfile.name, profileData.avatar || userProfile.avatar);
     }
-    
     showToast("Perfil atualizado!");
   }, [userProfile, authUser, setUserProfile, communityUpdateUserMetadata, showToast]);
 
@@ -203,8 +172,8 @@ const App: React.FC = () => {
       <div className="min-h-screen font-sans bg-light-bg-main dark:bg-dark-bg text-light-text dark:text-dark-text transition-colors">
         <Header userProfile={userProfile} darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} onProfileClick={() => { setInitialProfileTab('profile'); updateModal('profile', true); }} currentView={currentView as any} onNavigate={setCurrentView as any} toggleSidebar={() => updateModal('sidebar', true)} toggleDataSidebar={() => updateModal('quickView', true)} unreadNotificationsCount={notifications.filter(n => !n.read).length} onNotificationsClick={() => updateModal('notifications', true)} onPremiumClick={() => updateModal('premium', true)} />
         <main className="max-w-7xl mx-auto p-4 sm:p-8">
-          {currentView === 'dashboard' && <Dashboard userProfile={userProfile} selectedDate={selectedDate} onDateChange={setSelectedDate} selectedDateLog={selectedDateLog} dailyLogs={dailyLogs} onAddFoodClick={m => { setMealToAdd(m); updateModal('addFood', true); }} onAddFoodToMeal={handleAddFoodsToLog} onDeleteFood={handleDeleteFood} onUpdateGoal={(g) => setUserProfile({...userProfile, goal: g})} onSetWater={v => { const n = { ...dailyLogs }; n[dateStr] = { ...(n[dateStr] || { meals: [], waterIntake: 0 }), waterIntake: v }; setDailyLogs(n); }} onEditGoals={() => { setInitialProfileTab('goals'); updateModal('profile', true); }} fastingState={fastingState} onStartFasting={d => setFastingState({ isFasting: true, startTime: Date.now(), durationHours: d, endTime: Date.now() + d * 3600000, completionNotified: false })} onStopFasting={() => setFastingState(initialFasting)} onUpdateFastingTimes={(t) => setFastingState(p => ({...p, ...t}))} onFastingCompletionNotified={() => setFastingState(p => ({ ...p, completionNotified: true }))} showCoach={showCoach} onDismissCoach={() => setShowCoach(false)} />}
-          {currentView === 'community' && <CommunityFeed currentUserProfile={userProfile} currentUserAuth={authUser} onFollowUser={handleFollowUser} onSavePost={handleSavePost} onSharePost={handleSharePost} />}
+          {currentView === 'dashboard' && <Dashboard userProfile={userProfile} selectedDate={selectedDate} onDateChange={setSelectedDate} selectedDateLog={selectedDateLog} dailyLogs={dailyLogs} onAddFoodClick={m => { setMealToAdd(m); updateModal('addFood', true); }} onAddFoodToMeal={handleAddFoodsToLog} onDeleteFood={handleDeleteFood} onEditFood={(f, m) => { setFoodToEdit({food: f, mealName: m}); updateModal('editFood', true); }} onUpdateGoal={(g) => setUserProfile({...userProfile, goal: g})} onSetWater={v => { const n = { ...dailyLogs }; n[dateStr] = { ...(n[dateStr] || { meals: [], waterIntake: 0 }), waterIntake: v }; setDailyLogs(n); }} onEditGoals={() => { setInitialProfileTab('goals'); updateModal('profile', true); }} fastingState={fastingState} onStartFasting={d => setFastingState({ isFasting: true, startTime: Date.now(), durationHours: d, endTime: Date.now() + d * 3600000, completionNotified: false })} onStopFasting={() => setFastingState(initialFasting)} onUpdateFastingTimes={(t) => setFastingState(p => ({...p, ...t}))} onFastingCompletionNotified={() => setFastingState(p => ({ ...p, completionNotified: true }))} showCoach={showCoach} onDismissCoach={() => setShowCoach(false)} />}
+          {currentView === 'community' && <CommunityFeed currentUserProfile={userProfile} currentUserAuth={authUser} onFollowUser={(e) => {}} onSavePost={(id) => {}} onSharePost={(t) => {}} />}
           {currentView === 'recipes' && <RecipesDashboard userProfile={userProfile} onAddRecipeToLog={handleAddFoodsToLog} />}
           {currentView === 'reports' && <ReportsDashboard userProfile={userProfile} dailyLogs={dailyLogs} onUpgradeClick={() => updateModal('premium', true)} />}
           {currentView === 'workouts' && <WorkoutDashboard userProfile={userProfile} dailyLogs={dailyLogs} onLogWorkout={handleLogWorkout} />}
@@ -214,6 +183,7 @@ const App: React.FC = () => {
         <Sidebar isOpen={modals.sidebar} onClose={() => updateModal('sidebar', false)} userProfile={userProfile} currentView={currentView} onNavigate={v => { setCurrentView(v); updateModal('sidebar', false); }} onLogout={() => setAuthUser(null)} onRemindersClick={() => updateModal('reminders', true)} onChallengesClick={() => updateModal('challenges', true)} onAchievementsClick={() => updateModal('achievements', true)} />
         <QuickViewSidebar isOpen={modals.quickView} onClose={() => updateModal('quickView', false)} userProfile={userProfile} dailyLog={selectedDateLog} />
         {modals.addFood && mealToAdd && <AddFoodModal mealName={mealToAdd.name} onClose={() => updateModal('addFood', false)} onAddFoods={(f) => handleAddFoodsToLog(f, mealToAdd.name)} foodLibrary={foodLibrary} onUpdateFoodLibrary={setFoodLibrary} />}
+        {modals.editFood && foodToEdit && <EditFoodModal food={foodToEdit.food} mealName={foodToEdit.mealName} onClose={() => updateModal('editFood', false)} onSave={handleUpdateFood} />}
         {modals.profile && <ProfileModal userProfile={userProfile} dailyLogs={dailyLogs} onClose={() => updateModal('profile', false)} onSave={handleSaveProfile} onLogout={() => setAuthUser(null)} onUpdateWaterGoal={(g) => setUserProfile({...userProfile, goals: {...userProfile.goals, water: g}})} onChangePasswordClick={() => updateModal('password', true)} onUpgradeClick={() => updateModal('premium', true)} initialTab={initialProfileTab} darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} />}
         {modals.reminders && <RemindersModal reminders={userProfile.reminders || []} onClose={() => updateModal('reminders', false)} onSave={r => setUserProfile({ ...userProfile, reminders: r })} />}
         {modals.challenges && <ChallengesModal userProfile={userProfile} onClose={() => updateModal('challenges', false)} onSelectChallenge={() => {}} onDisableChallenge={() => {}} onCreateAndSelectCustomChallenge={() => {}} />}

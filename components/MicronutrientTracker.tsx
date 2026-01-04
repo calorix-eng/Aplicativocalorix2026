@@ -25,7 +25,7 @@ const DonutChart: React.FC<{ percentage: number }> = ({ percentage }) => {
             >
                 <circle
                     stroke="currentColor"
-                    className="text-gray-200 dark:text-gray-700"
+                    className="text-gray-100 dark:text-gray-800"
                     fill="transparent"
                     strokeWidth={stroke}
                     r={normalizedRadius}
@@ -34,11 +34,11 @@ const DonutChart: React.FC<{ percentage: number }> = ({ percentage }) => {
                 />
                 <circle
                     stroke="currentColor"
-                    className="text-accent-blue"
+                    className="text-accent-blue/70"
                     fill="transparent"
                     strokeWidth={stroke}
                     strokeDasharray={circumference + ' ' + circumference}
-                    style={{ strokeDashoffset }}
+                    style={{ strokeDashoffset, transition: 'stroke-dashoffset 1s ease-in-out' }}
                     strokeLinecap="round"
                     r={normalizedRadius}
                     cx={radius}
@@ -46,8 +46,8 @@ const DonutChart: React.FC<{ percentage: number }> = ({ percentage }) => {
                 />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-2xl font-bold">{`${Math.round(percentage)}%`}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">Meta</span>
+                <span className="text-2xl font-black text-gray-800 dark:text-white">{`${Math.round(percentage)}%`}</span>
+                <span className="text-[10px] font-black uppercase text-gray-400 tracking-tighter">Meta</span>
             </div>
         </div>
     );
@@ -77,17 +77,21 @@ const MicronutrientTracker: React.FC<MicronutrientTrackerProps> = ({ userProfile
     }
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Vitaminas & Minerais</CardTitle>
+        <Card className="border-none shadow-none sm:border-solid sm:shadow-sm">
+            <CardHeader className="px-0 sm:px-6">
+                <CardTitle className="text-xl font-black flex items-center gap-2">
+                    <div className="w-2 h-6 bg-accent-blue rounded-full"></div>
+                    Vitaminas & Minerais
+                </CardTitle>
             </CardHeader>
-            <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="md:col-span-1 flex flex-col items-center justify-center p-4 rounded-lg bg-gray-50 dark:bg-gray-900/50">
-                        <h3 className="text-lg font-semibold mb-2">Progresso Geral</h3>
+            <CardContent className="px-0 sm:px-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="md:col-span-1 flex flex-col items-center justify-center p-6 rounded-[2rem] bg-gray-50/50 dark:bg-gray-900/30 border border-gray-100 dark:border-gray-800">
+                        <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 mb-4">Média de Ingestão</h3>
                         <DonutChart percentage={averagePercentage} />
                     </div>
-                    <div className="md:col-span-2 space-y-3 max-h-72 overflow-y-auto pr-2">
+                    
+                    <div className="md:col-span-2 space-y-5">
                         {(Object.keys(goals) as Micronutrient[]).map((micronutrientKey) => {
                             const goal = goals[micronutrientKey];
                             if (!goal) return null;
@@ -95,22 +99,28 @@ const MicronutrientTracker: React.FC<MicronutrientTrackerProps> = ({ userProfile
                             const intakeAmount = intake[micronutrientKey] || 0;
                             const percentage = goal.amount > 0 ? (intakeAmount / goal.amount) * 100 : 0;
                             const status = getStatus(percentage);
-                            const progressBarColor = status === 'good' ? 'bg-green-500' : status === 'high' ? 'bg-orange-500' : 'bg-red-500';
+                            
+                            // Cores Suaves mas com destaque
+                            const progressBarColor = status === 'good' 
+                                ? 'bg-emerald-400' // Verde suave
+                                : status === 'high' 
+                                    ? 'bg-amber-300' // Amarelo suave
+                                    : 'bg-rose-400'; // Vermelho suave/coral
 
                             return (
-                                <div key={micronutrientKey}>
-                                    <div className="flex justify-between items-center mb-1">
+                                <div key={micronutrientKey} className="group">
+                                    <div className="flex justify-between items-end mb-1.5 px-1">
                                         <div className="flex items-center">
-                                            <AlertIcon status={status} />
-                                            <span className="font-semibold text-sm ml-2">{micronutrientKey}</span>
+                                            <div className={`w-2 h-2 rounded-full ${progressBarColor} mr-2 shadow-sm`}></div>
+                                            <span className="font-bold text-sm text-gray-700 dark:text-gray-200">{micronutrientKey}</span>
                                         </div>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400">
-                                            {Math.round(intakeAmount)} / {goal.amount} {goal.unit}
+                                        <span className="text-[11px] font-black text-gray-400 uppercase">
+                                            {Math.round(intakeAmount)} <span className="font-normal">/ {goal.amount}{goal.unit}</span>
                                         </span>
                                     </div>
-                                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                    <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-3 overflow-hidden border border-gray-200/20 dark:border-white/5">
                                         <div
-                                            className={`${progressBarColor} h-2 rounded-full transition-all duration-500`}
+                                            className={`${progressBarColor} h-full rounded-full transition-all duration-1000 ease-out shadow-inner`}
                                             style={{ width: `${Math.min(percentage, 100)}%` }}
                                         ></div>
                                     </div>
