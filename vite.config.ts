@@ -1,20 +1,18 @@
 
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+// Explicitly import process to provide correct Node.js types
+import process from 'node:process';
 
 export default defineConfig(({ mode }) => {
   // Carrega variáveis de ambiente (como API_KEY)
-  // FIX: Cast process to any to resolve "Property 'cwd' does not exist on type 'Process'" error in TypeScript environments with browser-focused types.
-  const env = loadEnv(mode, (process as any).cwd(), '');
+  const env = loadEnv(mode, process.cwd(), '');
 
   return {
     plugins: [react()],
     define: {
-      // Polyfill robusto para process.env exigido pelo SDK da Gemini
-      'process.env': {
-        API_KEY: JSON.stringify(env.API_KEY || ''),
-        NODE_ENV: JSON.stringify(mode),
-      },
+      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      'process.env.NODE_ENV': JSON.stringify(mode),
       'process.version': JSON.stringify('v18.0.0'),
       'process.platform': JSON.stringify('browser')
     },
