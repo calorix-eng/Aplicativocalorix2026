@@ -1,3 +1,4 @@
+
 // services/authService.ts
 import { auth } from "../firebase/config";
 import { 
@@ -24,8 +25,6 @@ const toAuthUser = (user: User, name?: string): AuthUser => ({
 
 export const onAuthChange = (callback: (user: AuthUser | null) => void) => {
     if (!auth) {
-        // In simulation mode, we don't have a real user listener.
-        // App.tsx handles reading from localStorage.
         return () => {}; // Return an empty unsubscribe function
     }
     return auth.onAuthStateChanged(user => {
@@ -38,26 +37,40 @@ export const onAuthChange = (callback: (user: AuthUser | null) => void) => {
 };
 
 export const registerUser = async (email: string, password: string, name: string): Promise<AuthUser> => {
-    if (!auth) throw new Error("Firebase not configured.");
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(userCredential.user, { displayName: name });
-    return toAuthUser(userCredential.user, name);
+    if (!auth) throw { code: 'auth/no-firebase', message: "Firebase não configurado." };
+    try {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await updateProfile(userCredential.user, { displayName: name });
+        return toAuthUser(userCredential.user, name);
+    } catch (error: any) {
+        // Relançamos garantindo que propriedades code e message existam
+        throw {
+            code: error.code || 'auth/unknown',
+            message: error.message || 'Erro ao registrar usuário'
+        };
+    }
 };
 
 export const loginUser = async (email: string, password: string): Promise<AuthUser> => {
-    if (!auth) throw new Error("Firebase not configured.");
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return toAuthUser(userCredential.user);
+    if (!auth) throw { code: 'auth/no-firebase', message: "Firebase não configurado." };
+    try {
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        return toAuthUser(userCredential.user);
+    } catch (error: any) {
+        throw {
+            code: error.code || 'auth/unknown',
+            message: error.message || 'Erro ao fazer login'
+        };
+    }
 };
 
 export const logoutUser = () => {
-    if (!auth) return Promise.resolve(); // Do nothing in mock mode
+    if (!auth) return Promise.resolve();
     return signOut(auth);
 };
 
 export const socialLogin = async (providerName: 'Google' | 'Facebook'): Promise<{user: AuthUser, isNew: boolean}> => {
     if (!auth) {
-        // Simulate social login if Firebase is disconnected
         console.warn(`Firebase not configured. Simulating ${providerName} login.`);
         return new Promise(resolve => {
             setTimeout(() => {
@@ -72,26 +85,32 @@ export const socialLogin = async (providerName: 'Google' | 'Facebook'): Promise<
         });
     }
     
-    const provider = providerName === 'Google' ? new GoogleAuthProvider() : new FacebookAuthProvider();
-    
-    // Força a exibição da tela de seleção de conta do Google
-    if (provider instanceof GoogleAuthProvider) {
-        provider.setCustomParameters({
-            prompt: 'select_account'
-        });
-    }
+    try {
+        const provider = providerName === 'Google' ? new GoogleAuthProvider() : new FacebookAuthProvider();
+        
+        if (provider instanceof GoogleAuthProvider) {
+            provider.setCustomParameters({
+                prompt: 'select_account'
+            });
+        }
 
-    const result = await signInWithPopup(auth, provider);
-    const user = result.user;
-    const additionalInfo = getAdditionalUserInfo(result);
-    
-    return {
-        user: toAuthUser(user),
-        isNew: !!additionalInfo?.isNewUser,
-    };
+        const result = await signInWithPopup(auth, provider);
+        const user = result.user;
+        const additionalInfo = getAdditionalUserInfo(result);
+        
+        return {
+            user: toAuthUser(user),
+            isNew: !!additionalInfo?.isNewUser,
+        };
+    } catch (error: any) {
+        throw {
+            code: error.code || 'auth/social-login-failed',
+            message: error.message || 'Falha no login social'
+        };
+    }
 };
 
 export const sendResetPasswordEmail = (email: string) => {
-    if (!auth) return Promise.resolve(); // Simulate in mock mode
+    if (!auth) return Promise.resolve();
     return sendPasswordResetEmail(auth, email);
 };

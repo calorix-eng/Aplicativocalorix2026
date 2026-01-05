@@ -1,23 +1,20 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import { UserProfile, DailyLog, Food, MealCategory, AuthUser, Post, AppNotification, FastingState, ReactionType, PostCategory, Reminder, Meal, Workout, Comment, Micronutrient, MicronutrientIntake } from './types';
+import { UserProfile, DailyLog, Food, MealCategory, AuthUser, AppNotification, FastingState, Workout, Micronutrient, MicronutrientIntake } from './types';
 import Onboarding from './components/Onboarding';
 import Dashboard from './components/Dashboard';
 import AddFoodModal from './components/AddFoodModal';
 import EditFoodModal from './components/EditFoodModal';
 import Header from './components/Header';
-import { calculateNutritionalGoals } from './utils/nutritionUtils';
 import ProfileModal, { ProfileTab } from './components/ProfileModal';
 import Auth from './components/Auth';
 import CommunityFeed from './components/CommunityFeed';
 import RecipesDashboard from './components/RecipesDashboard';
 import WorkoutDashboard from './components/WorkoutDashboard';
-import { getDefaultReminders } from './utils/reminderUtils';
 import Toast from './components/Toast';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import InteractiveTutorial from './components/InteractiveTutorial';
-import { availableChallenges, getStartOfWeek, updateChallengeProgress } from './utils/challengeUtils';
 import ReportsDashboard from './ReportsDashboard';
 import Sidebar from './components/Sidebar';
 import QuickViewSidebar from './components/QuickViewSidebar';
@@ -30,7 +27,7 @@ import { defaultBrazilianFoods, LibraryFood } from './utils/brazilianFoodData';
 import IntegrationsDashboard from './components/IntegrationsDashboard';
 import FriendsDashboard from './components/FriendsDashboard';
 import { useCommunityStore } from './store/communityStore';
-import { saveDailyLog, supabase } from './services/supabaseService';
+import { saveDailyLog, fetchDailyLogs, fetchUserProfile, saveUserProfile } from './services/supabaseService';
 
 type View = 'dashboard' | 'community' | 'recipes' | 'reports' | 'workouts' | 'integrations' | 'friends';
 const initialFasting: FastingState = { isFasting: false, startTime: null, durationHours: 0, endTime: null, completionNotified: false };
@@ -39,7 +36,7 @@ const App: React.FC = () => {
   const [authUser, setAuthUser] = useLocalStorage<AuthUser | null>('calorix_authUser', null);
   const [userProfile, setUserProfile] = useLocalStorage<UserProfile | null>(authUser ? `userProfile_${authUser.uid}` : null, null);
   const [dailyLogs, setDailyLogs] = useLocalStorage<Record<string, Omit<DailyLog, 'micronutrientIntake'>>>(authUser ? `dailyLogs_${authUser.uid}` : null, {});
-  const [notifications, setNotifications] = useLocalStorage<AppNotification[]>(authUser ? `notifications_${authUser.uid}` : null, []);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [foodLibrary, setFoodLibrary] = useLocalStorage<LibraryFood[]>('calorix_foodLibrary', defaultBrazilianFoods);
   const [fastingState, setFastingState] = useLocalStorage<FastingState>(authUser ? `fastingState_${authUser.email}` : null, initialFasting);
   
@@ -53,24 +50,43 @@ const App: React.FC = () => {
   const [showCoach, setShowCoach] = useState(false);
   const [modals, setModals] = useState({ profile: false, addFood: false, editFood: false, sidebar: false, quickView: false, reminders: false, challenges: false, achievements: false, notifications: false, password: false, premium: false });
 
-  const communityUpdateUserMetadata = useCommunityStore(state => state.updateUserMetadata);
-  const setFollowingStore = useCommunityStore(state => state.setFollowingStore);
-  const toggleFollowStore = useCommunityStore(state => state.toggleFollowStore);
+  const { init: initCommunity, setFollowingStore } = useCommunityStore();
 
   const dateStr = selectedDate.toISOString().split('T')[0];
   const showToast = useCallback((msg: string) => setToast({ message: msg, id: Date.now() }), []);
   const updateModal = (key: keyof typeof modals, val: boolean) => setModals(p => ({ ...p, [key]: val }));
 
   useEffect(() => {
-    if (userProfile?.following) {
-      setFollowingStore(userProfile.following);
+    if (authUser) {
+        initCommunity();
+        if (userProfile?.following) {
+            setFollowingStore(userProfile.following);
+        }
     }
-  }, [userProfile?.following, setFollowingStore]);
+  }, [authUser, userProfile?.following]);
+
+  useEffect(() => {
+    const loadDataFromSupabase = async () => {
+      if (authUser) {
+        const cloudProfile = await fetchUserProfile(authUser.uid);
+        if (cloudProfile) setUserProfile(cloudProfile);
+
+        const cloudLogs = await fetchDailyLogs(authUser.uid);
+        if (cloudLogs) setDailyLogs(cloudLogs);
+      }
+    };
+    loadDataFromSupabase();
+  }, [authUser]);
+
+  useEffect(() => {
+    if (authUser && userProfile) {
+        saveUserProfile(authUser.uid, userProfile);
+    }
+  }, [userProfile, authUser]);
 
   const selectedDateLog = useMemo((): DailyLog => {
     const rawLog = dailyLogs[dateStr] || { meals: [], waterIntake: 0, workouts: [] };
     const micronutrientIntake: MicronutrientIntake = {};
-
     rawLog.meals.forEach(meal => {
       meal.items.forEach(item => {
         if (item.micronutrients) {
@@ -81,40 +97,14 @@ const App: React.FC = () => {
         }
       });
     });
-
     return { ...rawLog, micronutrientIntake };
   }, [dailyLogs, dateStr]);
 
   useEffect(() => {
-    if (userProfile && authUser && (!userProfile.reminders || !userProfile.coach?.avatar)) {
-      setUserProfile({ ...userProfile, 
-        reminders: userProfile.reminders || getDefaultReminders(),
-        following: userProfile.following || [],
-        savedPosts: userProfile.savedPosts || [],
-        completedChallenges: userProfile.completedChallenges || [],
-        units: userProfile.units || 'metric',
-        integrations: userProfile.integrations || { connectedServices: [], syncHistory: [] },
-        coach: { id: 'leo', name: 'Leo', avatar: 'https://images.pexels.com/photos/2220337/pexels-photo-2220337.jpeg?auto=compress&cs=tinysrgb&w=400' }
-      });
+    if (authUser && selectedDateLog) {
+        const timer = setTimeout(() => saveDailyLog(authUser.uid, dateStr, selectedDateLog), 3000);
+        return () => clearTimeout(timer);
     }
-  }, [userProfile, authUser, setUserProfile]);
-
-  // Sincronização com Supabase (Persistência em Nuvem)
-  useEffect(() => {
-    const syncWithSupabase = async () => {
-      if (authUser && userProfile) {
-        try {
-          // Tenta salvar o log do dia atual no Supabase
-          await saveDailyLog(authUser.uid, dateStr, selectedDateLog);
-          console.log("Sincronizado com Supabase com sucesso.");
-        } catch (err) {
-          console.warn("Erro ao sincronizar com Supabase (Tabela daily_logs pode não existir):", err);
-        }
-      }
-    };
-
-    const timer = setTimeout(syncWithSupabase, 2000); // Debounce de 2 segundos
-    return () => clearTimeout(timer);
   }, [selectedDateLog, authUser, dateStr]);
 
   const handleAddFoodsToLog = useCallback((foods: Food[], mealName: string) => {
@@ -176,11 +166,8 @@ const App: React.FC = () => {
     if (!userProfile || !authUser) return;
     const updatedProfile = { ...userProfile, ...profileData, mealCategories };
     setUserProfile(updatedProfile);
-    if (profileData.name || profileData.avatar) {
-      communityUpdateUserMetadata(authUser.uid, profileData.name || userProfile.name, profileData.avatar || userProfile.avatar);
-    }
     showToast("Perfil atualizado!");
-  }, [userProfile, authUser, setUserProfile, communityUpdateUserMetadata, showToast]);
+  }, [userProfile, authUser, setUserProfile, showToast]);
 
   if (!authUser) return <Auth onLogin={setAuthUser} onRegister={setAuthUser} />;
   if (!userProfile) return <Onboarding onProfileCreate={setUserProfile} defaultName={authUser.name} />;
@@ -192,7 +179,7 @@ const App: React.FC = () => {
         <Header userProfile={userProfile} darkMode={darkMode} toggleDarkMode={() => setDarkMode(!darkMode)} onProfileClick={() => { setInitialProfileTab('profile'); updateModal('profile', true); }} currentView={currentView as any} onNavigate={setCurrentView as any} toggleSidebar={() => updateModal('sidebar', true)} toggleDataSidebar={() => updateModal('quickView', true)} unreadNotificationsCount={notifications.filter(n => !n.read).length} onNotificationsClick={() => updateModal('notifications', true)} onPremiumClick={() => updateModal('premium', true)} />
         <main className="max-w-7xl mx-auto p-4 sm:p-8">
           {currentView === 'dashboard' && <Dashboard userProfile={userProfile} selectedDate={selectedDate} onDateChange={setSelectedDate} selectedDateLog={selectedDateLog} dailyLogs={dailyLogs} onAddFoodClick={m => { setMealToAdd(m); updateModal('addFood', true); }} onAddFoodToMeal={handleAddFoodsToLog} onDeleteFood={handleDeleteFood} onEditFood={(f, m) => { setFoodToEdit({food: f, mealName: m}); updateModal('editFood', true); }} onUpdateGoal={(g) => setUserProfile({...userProfile, goal: g})} onSetWater={v => { const n = { ...dailyLogs }; n[dateStr] = { ...(n[dateStr] || { meals: [], waterIntake: 0 }), waterIntake: v }; setDailyLogs(n); }} onEditGoals={() => { setInitialProfileTab('goals'); updateModal('profile', true); }} fastingState={fastingState} onStartFasting={d => setFastingState({ isFasting: true, startTime: Date.now(), durationHours: d, endTime: Date.now() + d * 3600000, completionNotified: false })} onStopFasting={() => setFastingState(initialFasting)} onUpdateFastingTimes={(t) => setFastingState(p => ({...p, ...t}))} onFastingCompletionNotified={() => setFastingState(p => ({ ...p, completionNotified: true }))} showCoach={showCoach} onDismissCoach={() => setShowCoach(false)} />}
-          {currentView === 'community' && <CommunityFeed currentUserProfile={userProfile} currentUserAuth={authUser} onFollowUser={(e) => {}} onSavePost={(id) => {}} onSharePost={(t) => {}} />}
+          {currentView === 'community' && <CommunityFeed currentUserProfile={userProfile} currentUserAuth={authUser} onFollowUser={(email) => { const isFollowing = userProfile.following?.includes(email); const newList = isFollowing ? userProfile.following?.filter(e => e !== email) : [...(userProfile.following || []), email]; setUserProfile({...userProfile, following: newList}); showToast(isFollowing ? "Deixou de seguir" : "Seguindo!"); }} onSavePost={(id) => { const isSaved = userProfile.savedPosts?.includes(id); const newList = isSaved ? userProfile.savedPosts?.filter(sid => sid !== id) : [...(userProfile.savedPosts || []), id]; setUserProfile({...userProfile, savedPosts: newList}); showToast(isSaved ? "Removido dos salvos" : "Post salvo!"); }} onSharePost={() => { showToast("Link de compartilhamento copiado!"); }} />}
           {currentView === 'recipes' && <RecipesDashboard userProfile={userProfile} onAddRecipeToLog={handleAddFoodsToLog} />}
           {currentView === 'reports' && <ReportsDashboard userProfile={userProfile} dailyLogs={dailyLogs} onUpgradeClick={() => updateModal('premium', true)} />}
           {currentView === 'workouts' && <WorkoutDashboard userProfile={userProfile} dailyLogs={dailyLogs} onLogWorkout={handleLogWorkout} />}

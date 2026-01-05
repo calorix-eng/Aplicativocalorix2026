@@ -312,9 +312,10 @@ export const generateAiImage = async (prompt: string, type: 'food' | 'fitness' =
         
         const fullPrompt = `${prompt}. ${style}. White background or natural environment.`;
 
+        // FIX: Updated contents to accept string directly as per guidelines for Gemini text generation tasks.
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
-            contents: [{ text: fullPrompt }],
+            contents: fullPrompt,
             config: {
                 imageConfig: {
                     aspectRatio: "1:1"

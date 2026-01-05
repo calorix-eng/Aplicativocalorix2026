@@ -1,7 +1,4 @@
 
-
-
-
 import React, { useState, FormEvent } from 'react';
 import { LogoIcon } from './icons/LogoIcon';
 import { GoogleIcon } from './icons/GoogleIcon';
@@ -41,6 +38,40 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
     setActiveTab(tab);
     resetForm();
   }
+
+  // Função para extrair mensagem de erro amigável e garantir que seja STRING
+  const getFriendlyErrorMessage = (err: any): string => {
+    if (typeof err === 'string') return err;
+    
+    const code = err?.code || '';
+    const message = err?.message || '';
+
+    console.error("Auth Error Detail:", { code, message, full: err });
+
+    switch (code) {
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'E-mail ou senha incorretos. Verifique suas credenciais.';
+      case 'auth/email-already-in-use':
+        return 'Este e-mail já está em uso por outra conta.';
+      case 'auth/invalid-email':
+        return 'O endereço de e-mail informado não é válido.';
+      case 'auth/weak-password':
+        return 'A senha deve ter pelo menos 6 caracteres.';
+      case 'auth/popup-closed-by-user':
+        return 'O login foi cancelado antes de ser concluído.';
+      case 'auth/network-request-failed':
+        return 'Erro de conexão. Verifique sua internet.';
+      case 'auth/too-many-requests':
+        return 'Muitas tentativas falhas. Tente novamente mais tarde.';
+      default:
+        // Evita retornar o objeto de erro diretamente (o que causaria [object Object])
+        return typeof message === 'string' && message.length > 0 
+          ? message 
+          : 'Ocorreu um erro inesperado na autenticação.';
+    }
+  };
   
   const handleSocialLogin = async (providerName: 'Google' | 'Facebook') => {
       setIsLoading(true);
@@ -53,15 +84,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
           } else {
               onLogin(user);
           }
-      } catch (error: any) {
-          console.error("Social login error:", error);
-          if (error.code === 'auth/account-exists-with-different-credential') {
-              setError("Já existe uma conta com este e-mail. Tente fazer login com outro método.");
-          } else if (error.code === 'auth/unauthorized-domain') {
-              setError("Este domínio não está autorizado para autenticação. Adicione-o no seu console do Firebase em Authentication > Settings > Authorized domains.");
-          } else {
-              setError("Falha no login. Tente novamente.");
-          }
+      } catch (err: any) {
+          setError(getFriendlyErrorMessage(err));
       } finally {
           setIsLoading(false);
       }
@@ -79,7 +103,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
     }
     const users = JSON.parse(localStorage.getItem('calorix_users') || '{}');
 
-    setTimeout(() => { // Simulate network delay
+    setTimeout(() => {
         if (activeTab === 'register') {
             if (password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres.'); setIsLoading(false); return; }
             if (password !== confirmPassword) { setError('As senhas não coincidem.'); setIsLoading(false); return; }
@@ -90,7 +114,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
             localStorage.setItem('calorix_users', JSON.stringify(users));
             onRegister({ uid, name, email: normalizedEmail });
 
-        } else { // Login
+        } else {
             const user = users[normalizedEmail];
             if (!user || user.password !== password) { setError('E-mail ou senha inválidos.'); setIsLoading(false); return; }
             onLogin({ uid: user.uid || crypto.randomUUID(), name: user.name, email: normalizedEmail });
@@ -106,40 +130,25 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
 
     try {
       if (activeTab === 'register') {
-        if (password.length < 6) { throw { code: 'auth/weak-password' }; }
-        if (password !== confirmPassword) { throw { code: 'auth/passwords-not-matching' }; }
+        if (password.length < 6) { 
+            setError('A senha deve ter pelo menos 6 caracteres.');
+            setIsLoading(false);
+            return;
+        }
+        if (password !== confirmPassword) { 
+            setError('As senhas não coincidem.');
+            setIsLoading(false);
+            return;
+        }
         
         const user = await registerUser(email, password, name);
         onRegister(user);
-
-      } else { // Login
+      } else {
         const user = await loginUser(email, password);
         onLogin(user);
       }
-    } catch (error: any) {
-      console.error("Firebase auth error:", error);
-      switch(error.code) {
-        case 'auth/user-not-found':
-        case 'auth/wrong-password':
-        case 'auth/invalid-credential':
-          setError('E-mail ou senha incorretos. Por favor, verifique e tente novamente.');
-          break;
-        case 'auth/email-already-in-use':
-          setError('Este e-mail já está em uso. Tente fazer login ou use um e-mail diferente.');
-          break;
-        case 'auth/weak-password':
-          setError('A senha deve ter pelo menos 6 caracteres.');
-          break;
-        case 'auth/passwords-not-matching':
-          setError('As senhas não coincidem.');
-          break;
-        case 'auth/invalid-email':
-          setError('O formato do e-mail é inválido.');
-          break;
-        default:
-          setError('Ocorreu um erro. Tente novamente mais tarde.');
-          break;
-      }
+    } catch (err: any) {
+      setError(getFriendlyErrorMessage(err));
     } finally {
         setIsLoading(false);
     }
@@ -206,7 +215,11 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
                       </div>
                   )}
 
-                  {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                  {error && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                        <p className="text-red-600 dark:text-red-400 text-xs font-bold text-center whitespace-pre-wrap">{error}</p>
+                    </div>
+                  )}
 
                   <button type="submit" disabled={isLoading} className="w-full bg-accent-green text-white p-3 rounded-lg font-semibold hover:bg-green-600 transition disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed">
                       {isLoading ? 'Aguarde...' : (activeTab === 'login' ? 'Entrar' : 'Criar Conta')}
