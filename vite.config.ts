@@ -12,6 +12,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      'process.env.SUPABASE_TOKEN': JSON.stringify('sbp_cba6b68afdced5f855b8096bfbc5fa1e24f3092a'),
       'process.env.NODE_ENV': JSON.stringify(mode),
       'process.version': JSON.stringify('v18.0.0'),
       'process.platform': JSON.stringify('browser')
