@@ -30,6 +30,7 @@ import { defaultBrazilianFoods, LibraryFood } from './utils/brazilianFoodData';
 import IntegrationsDashboard from './components/IntegrationsDashboard';
 import FriendsDashboard from './components/FriendsDashboard';
 import { useCommunityStore } from './store/communityStore';
+import { saveDailyLog, supabase } from './services/supabaseService';
 
 type View = 'dashboard' | 'community' | 'recipes' | 'reports' | 'workouts' | 'integrations' | 'friends';
 const initialFasting: FastingState = { isFasting: false, startTime: null, durationHours: 0, endTime: null, completionNotified: false };
@@ -97,6 +98,24 @@ const App: React.FC = () => {
       });
     }
   }, [userProfile, authUser, setUserProfile]);
+
+  // Sincronização com Supabase (Persistência em Nuvem)
+  useEffect(() => {
+    const syncWithSupabase = async () => {
+      if (authUser && userProfile) {
+        try {
+          // Tenta salvar o log do dia atual no Supabase
+          await saveDailyLog(authUser.uid, dateStr, selectedDateLog);
+          console.log("Sincronizado com Supabase com sucesso.");
+        } catch (err) {
+          console.warn("Erro ao sincronizar com Supabase (Tabela daily_logs pode não existir):", err);
+        }
+      }
+    };
+
+    const timer = setTimeout(syncWithSupabase, 2000); // Debounce de 2 segundos
+    return () => clearTimeout(timer);
+  }, [selectedDateLog, authUser, dateStr]);
 
   const handleAddFoodsToLog = useCallback((foods: Food[], mealName: string) => {
     setDailyLogs(prev => {
