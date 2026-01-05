@@ -16,7 +16,6 @@ import { PencilIcon } from './icons/PencilIcon';
 import { LibraryFood } from '../utils/brazilianFoodData';
 import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
-// Added missing import for PlusIcon
 import { PlusIcon } from './icons/PlusIcon';
 
 interface AddFoodModalProps {
@@ -72,9 +71,9 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
         setLoadingMessage("Identificando alimentos...");
         const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
-    } catch (e) {
+    } catch (e: any) {
         console.error("Análise de imagem falhou:", e);
-        setError('A IA não conseguiu processar esta imagem. Verifique se o prato está visível.');
+        setError(e.message || 'A IA não conseguiu processar esta imagem. Verifique se o prato está visível.');
     } finally {
         setIsLoading(false);
     }
@@ -90,18 +89,17 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setResults([]);
       
       try {
-        // Redimensiona o arquivo diretamente antes da conversão
         const optimizedBase64 = await resizeImageFile(file, 768, 768, 0.6);
         
         setLoadingMessage("IA Analisando Nutrientes...");
         const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
       } catch (err: any) {
-        console.error("Erro no upload da galeria:", err);
-        setError('Falha ao processar imagem da galeria. Tente outra foto ou use a câmera agora.');
+        console.error("Erro crítico no upload da galeria:", err);
+        setError(err.message || 'Falha ao processar imagem da galeria. Tente outra foto ou use a câmera.');
       } finally {
         setIsLoading(false);
-        e.target.value = ''; 
+        if (e.target) e.target.value = ''; 
       }
   };
 
