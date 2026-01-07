@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Food, Micronutrient } from '../types';
 import { getNutritionFromImage, getNutritionFromText, getNutritionFromBarcode } from '../services/geminiService';
-import { fileToBase64, resizeImage, resizeImageFile } from '../utils/fileUtils';
+import { fileToBase64, resizeImage } from '../utils/fileUtils';
 import { SearchIcon } from './icons/SearchIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { BarcodeIcon } from './icons/BarcodeIcon';
@@ -17,6 +17,7 @@ import { LibraryFood } from '../utils/brazilianFoodData';
 import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { PlusIcon } from './icons/PlusIcon';
+import EditLibraryFoodModal from './EditLibraryFoodModal';
 
 interface AddFoodModalProps {
   mealName: string;
@@ -39,8 +40,16 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const [isScanning, setIsScanning] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   
+  // Library State
   const [librarySearch, setLibrarySearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [foodToEditInLib, setFoodToEditInLib] = useState<LibraryFood | null>(null);
+  const [isAddingNewToLib, setIsAddingNewToLib] = useState(false);
+
+  const categories = useMemo(() => {
+    const cats = new Set(foodLibrary.map(f => f.category));
+    return ['Todas', ...Array.from(cats).sort()];
+  }, [foodLibrary]);
 
   const filteredLibrary = useMemo(() => {
     return foodLibrary.filter(f => {
@@ -60,52 +69,40 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     setSelectedFoodIds(new Set(foundFoods.map(f => f.id)));
   };
   
-  const processAndAnalyzeImage = async (base64Image: string, mimeType: string) => {
-    setIsLoading(true);
-    setLoadingMessage("Otimizando imagem...");
-    setError(null);
-    setResults([]);
-    
-    try {
-        const optimizedBase64 = await resizeImage(base64Image, 768, 768, 0.6);
-        setLoadingMessage("Identificando alimentos...");
-        const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
-        processResults(foundFoods);
-    } catch (e: any) {
-        console.error("Análise de imagem falhou:", e);
-        setError(e.message || 'A IA não conseguiu processar esta imagem. Verifique se o prato está visível.');
-    } finally {
-        setIsLoading(false);
-    }
-  };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
       setIsLoading(true);
       setLoadingMessage("Lendo foto da galeria...");
       setError(null);
       setResults([]);
-      
       try {
-        const optimizedBase64 = await resizeImageFile(file, 768, 768, 0.6);
-        
+        const { mimeType, data } = await fileToBase64(file);
+        const optimizedBase64 = await resizeImage(data, 768, 768, 0.6);
         setLoadingMessage("IA Analisando Nutrientes...");
         const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
         processResults(foundFoods);
-      } catch (err: any) {
-        console.error("Erro crítico no upload da galeria:", err);
-        setError(err.message || 'Falha ao processar imagem da galeria. Tente outra foto ou use a câmera.');
+      } catch (err) {
+        setError('Falha ao processar imagem.');
       } finally {
         setIsLoading(false);
-        if (e.target) e.target.value = ''; 
       }
   };
 
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
-      processAndAnalyzeImage(data, mimeType);
+      setIsLoading(true);
+      setLoadingMessage("IA Analisando Alimentos...");
+      setError(null);
+      setResults([]);
+      try {
+        const foundFoods = await getNutritionFromImage(data, mimeType);
+        processResults(foundFoods);
+      } catch (err) {
+        setError('Falha ao processar foto.');
+      } finally {
+        setIsLoading(false);
+      }
   };
 
   const handleSearch = async () => {
@@ -153,6 +150,29 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     if (foodsToAdd.length > 0) onAddFoods(foodsToAdd);
   };
 
+  // Library CRUD
+  const handleDeleteFromLibrary = (e: React.MouseEvent, foodId: string) => {
+    e.stopPropagation();
+    if (window.confirm('Excluir este alimento da biblioteca?')) {
+        onUpdateFoodLibrary(foodLibrary.filter(f => f.id !== foodId));
+    }
+  };
+
+  const handleEditInLibrary = (e: React.MouseEvent, food: LibraryFood) => {
+    e.stopPropagation();
+    setFoodToEditInLib(food);
+  };
+
+  const handleSaveLibraryFood = (food: LibraryFood) => {
+    if (foodLibrary.some(f => f.id === food.id)) {
+        onUpdateFoodLibrary(foodLibrary.map(f => f.id === food.id ? food : f));
+    } else {
+        onUpdateFoodLibrary([...foodLibrary, food]);
+    }
+    setFoodToEditInLib(null);
+    setIsAddingNewToLib(false);
+  };
+
   const TabButton = ({ tab, label, icon }: { tab: Tab; label: string; icon: React.ReactElement }) => (
     <button
       onClick={() => {
@@ -178,6 +198,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4">
       <div className="bg-white dark:bg-dark-card rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-lg h-[95dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col overflow-hidden animate-slide-in-bottom">
         
+        {/* Header */}
         <div className="p-6 border-b dark:border-gray-800 flex justify-between items-center bg-white dark:bg-dark-card sticky top-0 z-10">
           <div>
             <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">{mealName}</h2>
@@ -188,6 +209,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </button>
         </div>
         
+        {/* Tabs */}
         <div className="border-b dark:border-gray-800 bg-white dark:bg-dark-card shadow-sm">
           <div className="flex px-2">
             <TabButton tab="search" label="Busca" icon={<SearchIcon className="w-5 h-5" />} />
@@ -197,6 +219,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </div>
         </div>
 
+        {/* Content */}
         <div className="flex-grow overflow-y-auto scrollbar-hide px-6 py-6">
           {activeTab === 'search' && (
             <div className="space-y-4">
@@ -277,36 +300,83 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
 
           {activeTab === 'library' && (
               <div className="space-y-6">
-                  <div className="relative">
-                    <input
-                        type="text"
-                        value={librarySearch}
-                        onChange={(e) => setLibrarySearch(e.target.value)}
-                        placeholder="Pesquisar no livro..."
-                        className="w-full p-4 pl-12 border-2 border-gray-100 dark:border-gray-800 rounded-2xl bg-gray-50 dark:bg-gray-900 focus:border-accent-green outline-none"
-                    />
-                    <SearchIcon className="absolute left-4 top-4.5 w-5 h-5 text-gray-300" />
+                  {/* Search and Add */}
+                  <div className="flex gap-2">
+                    <div className="relative flex-grow">
+                        <input
+                            type="text"
+                            value={librarySearch}
+                            onChange={(e) => setLibrarySearch(e.target.value)}
+                            placeholder="Pesquisar no livro..."
+                            className="w-full p-4 pl-12 border-2 border-gray-100 dark:border-gray-800 rounded-2xl bg-gray-50 dark:bg-gray-900 focus:border-accent-green outline-none"
+                        />
+                        <SearchIcon className="absolute left-4 top-4.5 w-5 h-5 text-gray-300" />
+                    </div>
+                    <button 
+                        onClick={() => setIsAddingNewToLib(true)}
+                        className="bg-accent-blue text-white p-4 rounded-2xl shadow-lg hover:bg-blue-600 transition active:scale-95"
+                        title="Criar novo alimento"
+                    >
+                        <PlusIcon className="w-6 h-6" />
+                    </button>
                   </div>
+
+                  {/* Category Pills */}
+                  <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide -mx-1">
+                      {categories.map(cat => (
+                          <button
+                            key={cat}
+                            onClick={() => setSelectedCategory(cat)}
+                            className={`px-5 py-2.5 rounded-2xl text-xs font-black uppercase tracking-widest whitespace-nowrap transition-all ${selectedCategory === cat ? 'bg-accent-green text-white shadow-md' : 'bg-gray-100 dark:bg-gray-800 text-gray-500'}`}
+                          >
+                              {cat}
+                          </button>
+                      ))}
+                  </div>
+
+                  {/* List */}
                   <div className="grid grid-cols-1 gap-3 pb-20">
-                      {filteredLibrary.slice(0, 15).map(food => (
+                      {filteredLibrary.length > 0 ? filteredLibrary.map(food => (
                           <div 
                             key={food.id} 
                             onClick={() => handleToggleSelection(food.id)}
-                            className={`p-5 rounded-3xl border-2 transition-all cursor-pointer ${selectedFoodIds.has(food.id) ? 'border-accent-green bg-accent-green/5 ring-4 ring-accent-green/5' : 'border-gray-50 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50'}`}
+                            className={`p-5 rounded-3xl border-2 transition-all cursor-pointer group ${selectedFoodIds.has(food.id) ? 'border-accent-green bg-accent-green/5 ring-4 ring-accent-green/5' : 'border-gray-50 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/50'}`}
                           >
                               <div className="flex justify-between items-center">
-                                  <div>
-                                    <span className="font-bold block text-gray-900 dark:text-white">{food.name}</span>
-                                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{food.category}</span>
+                                  <div className="flex-grow">
+                                    <span className="font-bold block text-gray-900 dark:text-white text-base leading-tight">{food.name}</span>
+                                    <div className="flex gap-2 mt-1">
+                                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{food.category}</span>
+                                        <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">• {food.servingSize}</span>
+                                    </div>
                                   </div>
-                                  <span className="text-accent-green font-black text-lg">{food.calories} <span className="text-[10px]">kcal</span></span>
+                                  <div className="flex items-center gap-4">
+                                      <div className="text-right">
+                                        <span className="text-accent-green font-black text-xl">{food.calories}</span>
+                                        <span className="text-[10px] text-gray-400 font-bold uppercase block -mt-1">kcal</span>
+                                      </div>
+                                      <div className="flex flex-col gap-2 ml-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                          <button onClick={(e) => handleEditInLibrary(e, food)} className="p-2 bg-white dark:bg-gray-800 rounded-xl text-accent-blue shadow-sm border dark:border-gray-700">
+                                              <PencilIcon className="w-3.5 h-3.5" />
+                                          </button>
+                                          <button onClick={(e) => handleDeleteFromLibrary(e, food.id)} className="p-2 bg-white dark:bg-gray-800 rounded-xl text-red-500 shadow-sm border dark:border-gray-700">
+                                              <TrashIcon className="w-3.5 h-3.5" />
+                                          </button>
+                                      </div>
+                                  </div>
                               </div>
                           </div>
-                      ))}
+                      )) : (
+                          <div className="text-center py-10 opacity-30">
+                              <BookOpenIcon className="w-12 h-12 mx-auto mb-2" />
+                              <p className="font-black uppercase text-xs tracking-widest">Nada encontrado</p>
+                          </div>
+                      )}
                   </div>
               </div>
           )}
 
+          {/* Loading and States */}
           {isLoading && (
               <div className="fixed inset-0 bg-white/95 dark:bg-dark-card/95 z-[110] flex flex-col items-center justify-center p-10 text-center animate-fade-in">
                 <div className="relative w-32 h-32 mb-8">
@@ -327,6 +397,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
             </div>
           )}
 
+          {/* Result Search/Photo List */}
           {results.length > 0 && !isLoading && (
             <div className="mt-4 space-y-4 pb-24">
               <ul className="space-y-3">
@@ -353,6 +424,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           )}
         </div>
 
+        {/* Footer Actions */}
         <div className="p-6 border-t dark:border-gray-800 bg-white/80 dark:bg-dark-card/80 backdrop-blur-md sticky bottom-0 z-20 pb-10 sm:pb-6">
             <button
                 onClick={handleAddSelected}
@@ -368,6 +440,16 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
             </button>
         </div>
       </div>
+
+      {/* Library Edit/Add Modals */}
+      {(foodToEditInLib || isAddingNewToLib) && (
+          <EditLibraryFoodModal 
+            food={foodToEditInLib || undefined}
+            onClose={() => { setFoodToEditInLib(null); setIsAddingNewToLib(false); }}
+            onSave={handleSaveLibraryFood}
+            categories={categories.filter(c => c !== 'Todas')}
+          />
+      )}
     </div>
   );
 };

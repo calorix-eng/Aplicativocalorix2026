@@ -43,10 +43,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
   const getFriendlyErrorMessage = (err: any): string => {
     if (typeof err === 'string') return err;
     
-    const code = err?.code || '';
+    // Tenta extrair o código de erro do Firebase de várias formas comuns
+    const code = err?.code || (err?.message?.includes('(') ? err.message.match(/\(([^)]+)\)/)?.[1] : '') || '';
     const message = err?.message || '';
 
-    console.error("Auth Error Detail:", { code, message, full: err });
+    // Log seguro para evitar [object Object] em ambientes de produção
+    console.error("Auth Error Code:", code);
+    console.error("Auth Error Message:", message);
 
     switch (code) {
       case 'auth/user-not-found':
@@ -66,10 +69,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin, onRegister }) => {
       case 'auth/too-many-requests':
         return 'Muitas tentativas falhas. Tente novamente mais tarde.';
       default:
-        // Evita retornar o objeto de erro diretamente (o que causaria [object Object])
-        return typeof message === 'string' && message.length > 0 
-          ? message 
-          : 'Ocorreu um erro inesperado na autenticação.';
+        // Fallback final: se não houver mensagem, retorna erro genérico em string
+        if (typeof message === 'string' && message.length > 0) {
+            // Remove o prefixo "Firebase:" para ficar mais limpo se não for mapeado
+            return message.replace('Firebase: ', '');
+        }
+        return 'Ocorreu um erro inesperado na autenticação. Tente novamente.';
     }
   };
   

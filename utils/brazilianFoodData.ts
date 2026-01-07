@@ -57,13 +57,6 @@ export const defaultBrazilianFoods: LibraryFood[] = [
     { id: 'lat4', category: 'Laticínios', name: 'Queijo Muçarela', calories: 280, protein: 22, carbs: 3, fat: 20, servingSize: '100g', micronutrients: { 'Cálcio': 730 } },
     { id: 'lat5', category: 'Laticínios', name: 'Requeijão Cremoso', calories: 257, protein: 9, carbs: 3.5, fat: 23, servingSize: '100g', micronutrients: { 'Cálcio': 250 } },
 
-    // EMBUTIDOS
-    { id: 'e1', category: 'Embutidos', name: 'Presunto Cozido', calories: 145, protein: 16.5, carbs: 1.5, fat: 8.1, servingSize: '100g' },
-    { id: 'e2', category: 'Embutidos', name: 'Salsicha', calories: 250, protein: 12, carbs: 2.5, fat: 21, servingSize: '100g' },
-    { id: 'e3', category: 'Embutidos', name: 'Linguiça Calabresa', calories: 300, protein: 15, carbs: 2, fat: 26, servingSize: '100g' },
-    { id: 'e4', category: 'Embutidos', name: 'Peito de Peru Defumado', calories: 104, protein: 17, carbs: 2.3, fat: 3, servingSize: '100g' },
-    { id: 'e5', category: 'Embutidos', name: 'Mortadela', calories: 270, protein: 12, carbs: 3, fat: 23, servingSize: '100g' },
-
     // INDUSTRIALIZADOS
     { id: 'i1', category: 'Industrializados', name: 'Pão de Forma', calories: 265, protein: 8, carbs: 49, fat: 3.5, servingSize: '100g' },
     { id: 'i2', category: 'Industrializados', name: 'Bolacha Recheada', calories: 480, protein: 5, carbs: 68, fat: 21, servingSize: '100g' },

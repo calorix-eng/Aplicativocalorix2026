@@ -43,11 +43,8 @@ export const registerUser = async (email: string, password: string, name: string
         await updateProfile(userCredential.user, { displayName: name });
         return toAuthUser(userCredential.user, name);
     } catch (error: any) {
-        // Relançamos garantindo que propriedades code e message existam
-        throw {
-            code: error.code || 'auth/unknown',
-            message: error.message || 'Erro ao registrar usuário'
-        };
+        // Lançamos preservando o objeto original para que o frontend extraia o code
+        throw error;
     }
 };
 
@@ -57,10 +54,7 @@ export const loginUser = async (email: string, password: string): Promise<AuthUs
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
         return toAuthUser(userCredential.user);
     } catch (error: any) {
-        throw {
-            code: error.code || 'auth/unknown',
-            message: error.message || 'Erro ao fazer login'
-        };
+        throw error;
     }
 };
 
@@ -103,10 +97,7 @@ export const socialLogin = async (providerName: 'Google' | 'Facebook'): Promise<
             isNew: !!additionalInfo?.isNewUser,
         };
     } catch (error: any) {
-        throw {
-            code: error.code || 'auth/social-login-failed',
-            message: error.message || 'Falha no login social'
-        };
+        throw error;
     }
 };
 
