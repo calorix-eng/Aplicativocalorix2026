@@ -11,7 +11,7 @@ import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { generateWorkout, parseWorkoutFromImage, generateExerciseImage } from '../services/geminiService';
 import { Card, CardHeader, CardTitle, CardContent } from './CalorieRing';
-import { fileToBase64, resizeImageFile, dataURLtoFile } from '../utils/fileUtils';
+import { resizeImageFile, dataURLtoFile } from '../utils/fileUtils';
 import CameraCapture from './CameraCapture';
 
 interface WorkoutDashboardProps {
@@ -111,13 +111,10 @@ const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({ userProfile, onLogW
         setIsCameraOpen(false);
         setIsLoading(true);
         try {
-            // Converte o base64 para um objeto File para enviar ao backend
+            // Converte o base64 da câmera para um objeto File.
+            // O resizeImageFile dentro da CameraCapture já faz um pré-redimensionamento.
             const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'workout_sheet.jpeg');
-            const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Opcional: comprimir antes de enviar
-            // FIX: parseWorkoutFromImage expects base64 string and mimeType.
-            // Use fileToBase64 to convert the resized File object.
-            const { mimeType: resizedMimeType, data: resizedData } = await fileToBase64(resizedFile);
-            const workout = await parseWorkoutFromImage(resizedData, resizedMimeType); // Pass data and mimeType
+            const workout = await parseWorkoutFromImage(file); // Passa o objeto File
             if (workout) setGeneratedWorkout(workout);
         } catch (error: any) {
             console.error("Erro ao ler ficha:", error);

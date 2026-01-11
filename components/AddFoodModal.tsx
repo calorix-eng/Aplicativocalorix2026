@@ -17,7 +17,7 @@ import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import EditLibraryFoodModal from './EditLibraryFoodModal';
-import { fileToBase64 } from '../utils/fileUtils'; // Added import for fileToBase64
+import { dataURLtoFile, resizeImageFile } from '../utils/fileUtils'; // Importar dataURLtoFile e resizeImageFile
 
 interface AddFoodModalProps {
   mealName: string;
@@ -77,32 +77,20 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setError(null);
       setResults([]);
       try {
-        // FIX: The getNutritionFromImage function expects base64 string and mimeType.
-        // Use fileToBase64 to convert the File object.
-        const { mimeType, data } = await fileToBase64(file);
+        // Redimensiona/comprime a imagem no frontend ANTES de enviar para o backend
+        // Isso ajuda a reduzir o tempo de upload e o payload para a função serverless.
+        const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Max 1024px, 70% quality
         setLoadingMessage("IA Analisando Nutrientes...");
-        const foundFoods = await getNutritionFromImage(data, mimeType); // Pass data and mimeType
+        const foundFoods = await getNutritionFromImage(resizedFile); // Passa o objeto File diretamente
         processResults(foundFoods);
       } catch (err: any) {
         console.error("Erro no processamento da imagem:", err);
+        // Erros do fetch no service layer já trazem uma mensagem amigável.
         setError(err.message || 'Falha ao processar imagem. Tente novamente.');
       } finally {
         setIsLoading(false);
       }
   };
-
-  const dataURLtoFile = (dataurl: string, filename: string): File => {
-    const arr = dataurl.split(',');
-    const mimeMatch = arr[0].match(/:(.*?);/);
-    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while(n--){
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new File([u8arr], filename, {type:mime});
-  }
 
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
@@ -111,9 +99,10 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setError(null);
       setResults([]);
       try {
-        // FIX: The getNutritionFromImage function expects base64 string and mimeType.
-        // Data and mimeType are already available from CameraCapture.
-        const foundFoods = await getNutritionFromImage(data, mimeType); // Pass data and mimeType
+        // Converte o base64 da câmera para um objeto File.
+        // O resizeImageFile dentro da CameraCapture já faz um pré-redimensionamento.
+        const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'camera_capture.jpeg');
+        const foundFoods = await getNutritionFromImage(file); // Passa o objeto File diretamente
         processResults(foundFoods);
       } catch (err: any) {
         console.error("Erro ao processar foto:", err);

@@ -3,7 +3,7 @@ import React, { useState, useRef, ChangeEvent, FormEvent } from 'react';
 import { UserProfile, ActivityLevel, MealCategory, DailyLog } from '../types';
 import { XIcon } from './icons/XIcon';
 import { CameraIcon } from './icons/CameraIcon';
-import { fileToBase64, resizeImageFile, dataURLtoFile } from '../utils/fileUtils'; // fileToBase64 added
+import { resizeImageFile, dataURLtoFile } from '../utils/fileUtils'; 
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import WaterGoalInput from './WaterGoalInput';
@@ -146,11 +146,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         try {
             // Redimensiona e comprime a imagem ANTES de enviar para o backend
             const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Limite de 1024px, qualidade 0.7
-            // FIX: getExercisesFromImage expects base64 string and mimeType.
-            // Use fileToBase64 to convert the resized File object.
-            const { mimeType, data } = await fileToBase64(resizedFile);
-            const identifiedExercises = await getExercisesFromImage(data, mimeType); // Pass data and mimeType
-
+            const identifiedExercises = await getExercisesFromImage(resizedFile); // Passa o objeto File
+            
             if (identifiedExercises && identifiedExercises.length > 0) {
                 setFormData(prev => {
                     const existingExercises = prev.exercises
@@ -186,7 +183,6 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
             calories: formData.customCalories ? parseInt(formData.customCalories) : undefined,
             protein: formData.customProtein ? parseInt(formData.customProtein) : undefined,
             carbs: formData.customCarbs ? parseInt(formData.customCarbs) : undefined,
-            // FIX: formData.fat should be formData.customFat
             fat: formData.customFat ? parseInt(formData.customFat) : undefined, // Corrected from formData.fat
         };
 
