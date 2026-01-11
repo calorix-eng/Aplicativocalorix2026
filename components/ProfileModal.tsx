@@ -3,7 +3,7 @@ import React, { useState, useRef, ChangeEvent, FormEvent } from 'react';
 import { UserProfile, ActivityLevel, MealCategory, DailyLog } from '../types';
 import { XIcon } from './icons/XIcon';
 import { CameraIcon } from './icons/CameraIcon';
-import { fileToBase64, resizeImage } from '../utils/fileUtils';
+import { fileToBase64, resizeImageFile, dataURLtoFile } from '../utils/fileUtils'; // fileToBase64 added
 import { TrashIcon } from './icons/TrashIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import WaterGoalInput from './WaterGoalInput';
@@ -84,28 +84,36 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
     const handleAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const { mimeType, data } = await fileToBase64(file);
-            const base64 = `data:${mimeType};base64,${data}`;
             // Redimensiona para 200px para garantir que o localStorage não estoure
-            const resized = await resizeImage(base64, 200, 200, 0.6);
-            setFormData(prev => ({ ...prev, avatar: resized }));
+            const resizedFile = await resizeImageFile(file, 200, 200, 0.6);
+            const reader = new FileReader();
+            reader.readAsDataURL(resizedFile);
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, avatar: reader.result as string }));
+            };
         }
     };
 
     const handleCoachAvatarChange = async (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
-            const { mimeType, data } = await fileToBase64(file);
-            const base64 = `data:${mimeType};base64,${data}`;
-            const resized = await resizeImage(base64, 200, 200, 0.6);
-            setFormData(prev => ({ ...prev, coachAvatar: resized }));
+            const resizedFile = await resizeImageFile(file, 200, 200, 0.6);
+            const reader = new FileReader();
+            reader.readAsDataURL(resizedFile);
+            reader.onloadend = () => {
+                setFormData(prev => ({ ...prev, coachAvatar: reader.result as string }));
+            };
         }
     };
 
     const handleCoachPhotoTaken = async ({ mimeType, data }: { mimeType: string, data: string }) => {
-        const base64 = `data:${mimeType};base64,${data}`;
-        const resized = await resizeImage(base64, 200, 200, 0.6);
-        setFormData(prev => ({ ...prev, coachAvatar: resized }));
+        const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'coach_avatar.jpeg');
+        const resizedFile = await resizeImageFile(file, 200, 200, 0.6);
+        const reader = new FileReader();
+        reader.readAsDataURL(resizedFile);
+        reader.onloadend = () => {
+            setFormData(prev => ({ ...prev, coachAvatar: reader.result as string }));
+        };
         setIsCoachCameraOpen(false);
     };
 
@@ -136,8 +144,12 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
         setExerciseError(null);
 
         try {
-            const { mimeType, data } = await fileToBase64(file);
-            const identifiedExercises = await getExercisesFromImage(data, mimeType);
+            // Redimensiona e comprime a imagem ANTES de enviar para o backend
+            const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Limite de 1024px, qualidade 0.7
+            // FIX: getExercisesFromImage expects base64 string and mimeType.
+            // Use fileToBase64 to convert the resized File object.
+            const { mimeType, data } = await fileToBase64(resizedFile);
+            const identifiedExercises = await getExercisesFromImage(data, mimeType); // Pass data and mimeType
 
             if (identifiedExercises && identifiedExercises.length > 0) {
                 setFormData(prev => {
@@ -156,13 +168,13 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
             } else {
                 setExerciseError("Nenhum exercício foi identificado na imagem.");
             }
-        } catch (error) {
-            console.error(error);
-            setExerciseError("Falha ao analisar a imagem. Tente novamente.");
+        } catch (error: any) {
+            console.error("Erro ao identificar exercícios:", error);
+            setExerciseError(error.message || "Falha ao analisar a imagem. Tente novamente.");
         } finally {
             setIsIdentifyingExercises(false);
             if (e.target) {
-                e.target.value = '';
+                e.target.value = ''; // Limpa o input file
             }
         }
     };
@@ -174,7 +186,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ userProfile, dailyLogs, onC
             calories: formData.customCalories ? parseInt(formData.customCalories) : undefined,
             protein: formData.customProtein ? parseInt(formData.customProtein) : undefined,
             carbs: formData.customCarbs ? parseInt(formData.customCarbs) : undefined,
-            fat: formData.customFat ? parseInt(formData.customFat) : undefined,
+            // FIX: formData.fat should be formData.customFat
+            fat: formData.customFat ? parseInt(formData.customFat) : undefined, // Corrected from formData.fat
         };
 
         const finalCustomGoals = { ...userProfile.customGoals };

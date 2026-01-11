@@ -24,10 +24,11 @@ const RecipeImage: React.FC<{ recipe: AiRecipe; className?: string }> = ({ recip
         const fetchImage = async () => {
             setIsLoading(true);
             try {
+                // Chama a função de serviço que agora usa o backend proxy
                 const url = await generateAiImage(recipe.imagePrompt || recipe.name, 'food');
                 setImageUrl(url);
             } catch (err) {
-                console.error(err);
+                console.error("Erro ao gerar imagem da receita:", err);
             } finally {
                 setIsLoading(false);
             }
@@ -81,8 +82,9 @@ const RecipesDashboard: React.FC<RecipesDashboardProps> = ({ userProfile, onAddR
         } else {
             setGeneratedRecipes(aiRecipes);
         }
-    } catch (e) {
-        setError('Ocorreu um erro ao buscar as receitas. Por favor, tente novamente.');
+    } catch (e: any) {
+        console.error("Erro ao gerar receitas:", e);
+        setError(e.message || 'Ocorreu um erro ao buscar as receitas. Por favor, tente novamente.');
     } finally {
         setIsLoading(false);
     }

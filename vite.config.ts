@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      // 'process.env.API_KEY': JSON.stringify(env.API_KEY || ''), // REMOVIDO: A API_KEY do Gemini não deve ser exposta no frontend.
       'process.env.SUPABASE_URL': JSON.stringify('https://xmlsbkiahzmrtsautoqk.supabase.co'),
       'process.env.SUPABASE_KEY': JSON.stringify('sb_publishable_K4w8RQ5BDWhRKyi_yBCptQ_Ky1ZXpDh'),
       'process.env.NODE_ENV': JSON.stringify(mode),

@@ -31,10 +31,11 @@ const RecipeDetailImage: React.FC<{ recipe: AiRecipe }> = ({ recipe }) => {
         const fetchImage = async () => {
             setIsLoading(true);
             try {
+                // Chama a função de serviço que agora usa o backend proxy
                 const url = await generateAiImage(recipe.imagePrompt || recipe.name, 'food');
                 setImageUrl(url);
             } catch (err) {
-                console.error(err);
+                console.error("Erro ao gerar imagem detalhe da receita:", err);
             } finally {
                 setIsLoading(false);
             }

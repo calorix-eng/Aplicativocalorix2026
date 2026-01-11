@@ -11,7 +11,7 @@ import { TrashIcon } from './icons/TrashIcon';
 import { PencilIcon } from './icons/PencilIcon';
 import { generateWorkout, parseWorkoutFromImage, generateExerciseImage } from '../services/geminiService';
 import { Card, CardHeader, CardTitle, CardContent } from './CalorieRing';
-import { fileToBase64 } from '../utils/fileUtils';
+import { fileToBase64, resizeImageFile, dataURLtoFile } from '../utils/fileUtils';
 import CameraCapture from './CameraCapture';
 
 interface WorkoutDashboardProps {
@@ -31,17 +31,18 @@ const WorkoutExerciseImage: React.FC<{ exercise: Exercise }> = ({ exercise }) =>
 
     useEffect(() => {
         const fetchImage = async () => {
-            if (exercise.imageUrl) return;
+            if (exercise.imageUrl) return; // Se já tem URL, não gera novamente
             setIsLoading(true);
             try {
                 const prompt = exercise.image_prompt || `${exercise.name} exercise demonstration illustration`;
+                // Chama a função de serviço que agora usa o backend proxy
                 const url = await generateExerciseImage(prompt);
                 if (url) {
                     setImageUrl(url);
                     exercise.imageUrl = url; // Cache local no objeto do exercício
                 }
             } catch (err) {
-                console.error(err);
+                console.error("Erro ao gerar imagem do exercício:", err);
             } finally {
                 setIsLoading(false);
             }
@@ -50,19 +51,23 @@ const WorkoutExerciseImage: React.FC<{ exercise: Exercise }> = ({ exercise }) =>
         fetchImage();
     }, [exercise]);
 
-    return (
-        <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-800 flex-shrink-0 overflow-hidden border flex items-center justify-center">
-            {isLoading ? (
-                <div className="animate-pulse w-full h-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                   <DumbbellIcon className="w-6 h-6 text-gray-400 opacity-50" />
-                </div>
-            ) : imageUrl ? (
-                <img src={imageUrl} className="w-full h-full object-cover" alt={exercise.name} />
-            ) : (
+    if (isLoading) {
+        return (
+            <div className="w-16 h-16 rounded-lg bg-gray-100 dark:bg-gray-800 flex-shrink-0 overflow-hidden border flex items-center justify-center animate-pulse">
+               <DumbbellIcon className="w-6 h-6 text-gray-400 opacity-50" />
+            </div>
+        );
+    }
+
+    if (!imageUrl) {
+        return (
+            <div className="w-16 h-16 rounded-lg bg-gray-200 dark:bg-gray-700 flex-shrink-0 overflow-hidden border flex items-center justify-center">
                 <DumbbellIcon className="w-8 h-8 text-gray-300" />
-            )}
-        </div>
-    );
+            </div>
+        );
+    }
+
+    return <img src={imageUrl} className="w-full h-full object-cover" alt={exercise.name} />;
 };
 
 const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({ userProfile, onLogWorkout, dailyLogs }) => {
@@ -94,8 +99,9 @@ const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({ userProfile, onLogW
         try {
             const workout = await generateWorkout(userProfile, equipment, duration, level);
             if (workout) setGeneratedWorkout(workout);
-        } catch (error) {
-            console.error(error);
+        } catch (error: any) {
+            console.error("Erro ao gerar treino:", error);
+            alert(error.message || "Erro ao gerar treino personalizado.");
         } finally {
             setIsLoading(false);
         }
@@ -105,10 +111,17 @@ const WorkoutDashboard: React.FC<WorkoutDashboardProps> = ({ userProfile, onLogW
         setIsCameraOpen(false);
         setIsLoading(true);
         try {
-            const workout = await parseWorkoutFromImage(data, mimeType);
+            // Converte o base64 para um objeto File para enviar ao backend
+            const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'workout_sheet.jpeg');
+            const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Opcional: comprimir antes de enviar
+            // FIX: parseWorkoutFromImage expects base64 string and mimeType.
+            // Use fileToBase64 to convert the resized File object.
+            const { mimeType: resizedMimeType, data: resizedData } = await fileToBase64(resizedFile);
+            const workout = await parseWorkoutFromImage(resizedData, resizedMimeType); // Pass data and mimeType
             if (workout) setGeneratedWorkout(workout);
-        } catch (error) {
-            alert("Erro ao ler ficha. Tente uma foto mais clara.");
+        } catch (error: any) {
+            console.error("Erro ao ler ficha:", error);
+            alert(error.message || "Erro ao ler ficha. Tente uma foto mais clara.");
         } finally {
             setIsLoading(false);
         }

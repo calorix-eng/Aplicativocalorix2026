@@ -23,22 +23,42 @@ export const fileToBase64 = (file: File): Promise<{mimeType: string, data: strin
 };
 
 /**
+ * Converte uma data URL (base64) para um objeto File.
+ * Útil para CameraCapture que retorna data URL.
+ */
+export const dataURLtoFile = (dataurl: string, filename: string): File => {
+  const arr = dataurl.split(',');
+  const mimeMatch = arr[0].match(/:(.*?);/);
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while(n--){
+      u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, {type:mime});
+}
+
+
+/**
  * Redimensiona um objeto File de forma resiliente usando Canvas e URL de objeto.
  * Este método é mais compatível com navegadores mobile do que createImageBitmap.
+ * NOTA: Esta função foi substituída ou adaptada em outros contextos para o envio direto de File ao backend.
+ * Ela é mais útil para pré-processamento no frontend antes de conversão para Base64 se o envio for puro Base64.
+ * Para FormData com File, a compressão pode ser feita diretamente no File antes de anexar.
  */
-export const resizeImageFile = async (file: File, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<string> => {
+export const resizeImageFile = async (file: File, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<File> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         const objectUrl = URL.createObjectURL(file);
         
         img.onload = () => {
-            URL.revokeObjectURL(objectUrl); // Limpeza de memória imediata
+            URL.revokeObjectURL(objectUrl);
             
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
 
-            // Cálculo de proporções
             if (width > height) {
                 if (width > maxWidth) {
                     height *= maxWidth / width;
@@ -64,15 +84,13 @@ export const resizeImageFile = async (file: File, maxWidth: number = 768, maxHei
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, width, height);
             
-            const dataUrl = canvas.toDataURL('image/jpeg', quality);
-            const base64 = dataUrl.split(',')[1];
-            
-            if (!base64) {
-                reject(new Error("Falha ao gerar Base64 da imagem."));
-                return;
-            }
-            
-            resolve(base64);
+            canvas.toBlob(blob => {
+                if (blob) {
+                    resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+                } else {
+                    reject(new Error("Falha ao comprimir imagem para Blob."));
+                }
+            }, 'image/jpeg', quality);
         };
 
         img.onerror = () => {
@@ -85,7 +103,9 @@ export const resizeImageFile = async (file: File, maxWidth: number = 768, maxHei
 };
 
 /**
- * Redimensiona e comprime uma string imagem em base64.
+ * Redimensiona e comprime uma string imagem em base64, retornando Base64.
+ * NOTA: Para a nova arquitetura, o envio é via File, então esta função é menos usada diretamente para o envio.
+ * Pode ser útil para pré-visualizações ou se o backend pedir Base64 puro.
  */
 export const resizeImage = (base64Str: string, maxWidth: number = 768, maxHeight: number = 768, quality: number = 0.6): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -118,6 +138,7 @@ export const resizeImage = (base64Str: string, maxWidth: number = 768, maxHeight
                 const dataUrl = canvas.toDataURL('image/jpeg', quality);
                 resolve(dataUrl.split(',')[1]);
             } else {
+                // Fallback: se o contexto não for obtido, retorna o base64 original (sem data: prefix)
                 resolve(base64Str.includes(',') ? base64Str.split(',')[1] : base64Str);
             }
         };

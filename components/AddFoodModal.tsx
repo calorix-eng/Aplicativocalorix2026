@@ -1,8 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
-import { Food, Micronutrient } from '../types';
+import { Food } from '../types';
 import { getNutritionFromImage, getNutritionFromText, getNutritionFromBarcode } from '../services/geminiService';
-import { fileToBase64, resizeImage } from '../utils/fileUtils';
 import { SearchIcon } from './icons/SearchIcon';
 import { CameraIcon } from './icons/CameraIcon';
 import { BarcodeIcon } from './icons/BarcodeIcon';
@@ -18,6 +17,7 @@ import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import EditLibraryFoodModal from './EditLibraryFoodModal';
+import { fileToBase64 } from '../utils/fileUtils'; // Added import for fileToBase64
 
 interface AddFoodModalProps {
   mealName: string;
@@ -77,17 +77,32 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setError(null);
       setResults([]);
       try {
+        // FIX: The getNutritionFromImage function expects base64 string and mimeType.
+        // Use fileToBase64 to convert the File object.
         const { mimeType, data } = await fileToBase64(file);
-        const optimizedBase64 = await resizeImage(data, 768, 768, 0.6);
         setLoadingMessage("IA Analisando Nutrientes...");
-        const foundFoods = await getNutritionFromImage(optimizedBase64, 'image/jpeg');
+        const foundFoods = await getNutritionFromImage(data, mimeType); // Pass data and mimeType
         processResults(foundFoods);
-      } catch (err) {
-        setError('Falha ao processar imagem.');
+      } catch (err: any) {
+        console.error("Erro no processamento da imagem:", err);
+        setError(err.message || 'Falha ao processar imagem. Tente novamente.');
       } finally {
         setIsLoading(false);
       }
   };
+
+  const dataURLtoFile = (dataurl: string, filename: string): File => {
+    const arr = dataurl.split(',');
+    const mimeMatch = arr[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new File([u8arr], filename, {type:mime});
+  }
 
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
@@ -96,10 +111,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setError(null);
       setResults([]);
       try {
-        const foundFoods = await getNutritionFromImage(data, mimeType);
+        // FIX: The getNutritionFromImage function expects base64 string and mimeType.
+        // Data and mimeType are already available from CameraCapture.
+        const foundFoods = await getNutritionFromImage(data, mimeType); // Pass data and mimeType
         processResults(foundFoods);
-      } catch (err) {
-        setError('Falha ao processar foto.');
+      } catch (err: any) {
+        console.error("Erro ao processar foto:", err);
+        setError(err.message || 'Falha ao processar foto. Tente novamente.');
       } finally {
         setIsLoading(false);
       }
@@ -113,8 +131,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     try {
       const foundFoods = await getNutritionFromText(query);
       processResults(foundFoods);
-    } catch (e) {
-      setError('Falha ao buscar dados nutricionais.');
+    } catch (e: any) {
+      setError(e.message || 'Falha ao buscar dados nutricionais.');
     } finally {
       setIsLoading(false);
     }
@@ -128,8 +146,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     try {
       const foundFoods = await getNutritionFromBarcode(barcode);
       processResults(foundFoods);
-    } catch (e) {
-      setError('Produto não encontrado.');
+    } catch (e: any) {
+      setError(e.message || 'Produto não encontrado.');
     } finally {
       setIsLoading(false);
     }
