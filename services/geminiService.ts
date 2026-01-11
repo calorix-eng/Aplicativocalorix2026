@@ -1,317 +1,274 @@
 
 // services/geminiService.ts
-// IMPORTANTE: O frontend NÃO inicializa mais GoogleGenAI diretamente nem acessa API_KEY.
-// A SDK do Gemini (@google/genai) NÃO DEVE ser importada neste arquivo do frontend.
-import { Food, Micronutrient, MealSuggestion, UserProfile, Recipe, Workout } from '../types';
-import { fileToBase64 } from '../utils/fileUtils'; // Adicionado para converter File para Base64 quando necessário
-
-// O 'Type' do @google/genai não é mais importado aqui.
-// As definições de esquema são apenas para referência de tipo no TypeScript, não para uso em runtime.
-// No frontend, passamos os prompts e o backend se encarrega de construir o schema se necessário.
-const micronutrientProperties: Record<Micronutrient, { type: string, description: string }> = {
-    'Vitamina C': { type: 'number', description: 'Vitamina C em mg' },
-    'Cálcio': { type: 'number', description: 'Cálcio em mg' },
-    'Ferro': { type: 'number', description: 'Ferro em mg' },
-    'Vitamina D': { type: 'number', description: 'Vitamina D em mcg' },
-    'Vitamina A': { type: 'number', description: 'Vitamina A em mcg' },
-    'Potássio': { type: 'number', description: 'Potássio em mg' },
-    'Magnésio': { type: 'number', description: 'Magnésio em mg' },
-};
-
-// --- Funções de Nutrição ---
+import { Food, UserProfile, MealSuggestion, Recipe, Workout } from '../types';
 
 /**
- * Envia um arquivo de imagem diretamente para o backend para análise nutricional.
- * @param imageFile O objeto File da imagem.
- * @returns Uma Promise que resolve para um array de Food.
+ * Utilitário para validar e parsear a resposta da API com segurança total.
+ * Evita o erro "Unexpected end of JSON input".
+ */
+async function safeFetchJson(response: Response) {
+  const text = await response.text();
+  try {
+    const json = JSON.parse(text);
+    if (!response.ok) {
+      throw new Error(json.error || `Erro na API (${response.status})`);
+    }
+    return json;
+  } catch (err) {
+    console.error("Resposta não-JSON detectada:", text);
+    throw new Error(`O servidor retornou uma resposta inválida. Status: ${response.status}`);
+  }
+}
+
+/**
+ * Analisa uma imagem enviada via câmera ou galeria.
+ * @param imageFile Objeto File do navegador (input type="file" ou capture)
  */
 export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> => {
-    try {
-        const formData = new FormData();
-        formData.append('image', imageFile); // Anexa o File diretamente
+  // 1. Proteção de tamanho (Vercel Serverless tem limite de payload)
+  const MAX_SIZE = 3.5 * 1024 * 1024; // 3.5MB para segurança
+  if (imageFile.size > MAX_SIZE) {
+    throw new Error("A imagem é muito grande. Tente tirar uma foto mais simples ou reduza a qualidade.");
+  }
 
-        const response = await fetch('/api/analyze-image', {
-            method: 'POST',
-            body: formData,
-            // 'Content-Type': 'multipart/form-data' é definido automaticamente pelo navegador
-        });
+  try {
+    // 2. Construção do FormData (Padrão para envio de arquivos)
+    const formData = new FormData();
+    formData.append('image', imageFile);
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido na análise de imagem.');
-        }
+    // 3. Chamada para o SEU backend (Proxy)
+    const response = await fetch('/api/analyze-image', {
+      method: 'POST',
+      body: formData,
+      // IMPORTANTE: Não defina Content-Type manualmente ao usar FormData!
+      // O navegador fará isso automaticamente incluindo o boundary.
+    });
 
-        const data = await response.json();
-        // O backend agora retorna o JSON já parsed pelo Gemini
-        const parsedData = JSON.parse(data.analysis); 
-        return parsedData.map((item: any) => ({ ...item, id: crypto.randomUUID() }));
-    } catch (error) {
-        console.error("Error analyzing image:", error);
-        throw error; // Propaga o erro para o componente UI
-    }
+    const data = await safeFetchJson(response);
+    
+    // O Gemini via backend retorna o JSON da análise no campo 'analysis'
+    const foods = JSON.parse(data.analysis); 
+    
+    return foods.map((f: any) => ({
+      ...f,
+      id: crypto.randomUUID(),
+      timestamp: Date.now()
+    }));
+  } catch (error: any) {
+    console.error("Erro crítico no processamento da imagem:", error);
+    throw error;
+  }
 };
 
-/**
- * Envia uma consulta de texto para o backend para análise nutricional.
- * @param query A consulta de texto.
- * @returns Uma Promise que resolve para um array de Food.
- */
+// FIX: Added getNutritionFromText to handle manual search queries using Gemini.
 export const getNutritionFromText = async (query: string): Promise<Food[]> => {
-     try {
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'getNutritionFromText',
-                payload: { query },
-                modelName: 'gemini-3-flash-preview',
-            }),
-        });
+  try {
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'getNutritionFromText', 
+        payload: { query: `Forneça os dados nutricionais (calorias, proteína, carboidratos, gordura) para: "${query}". Retorne um array JSON.` } 
+      }),
+    });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido na busca por texto.');
-        }
-
-        const data = await response.json();
-        const parsedData = JSON.parse(data.analysis);
-        return parsedData.map((item: any) => ({ ...item, id: crypto.randomUUID() }));
-    } catch (error) {
-        console.error("Error fetching nutrition from text:", error);
-        throw error;
-    }
+    const data = await safeFetchJson(response);
+    const foods = JSON.parse(data.analysis);
+    
+    return foods.map((f: any) => ({
+      ...f,
+      id: crypto.randomUUID(),
+      timestamp: Date.now()
+    }));
+  } catch (error: any) {
+    console.error("Erro ao buscar nutrição por texto:", error);
+    throw error;
+  }
 };
 
-/**
- * Envia um código de barras para o backend para análise nutricional.
- * @param barcode O código de barras.
- * @returns Uma Promise que resolve para um array de Food.
- */
+// FIX: Added getNutritionFromBarcode to process scanned product barcodes using Gemini.
 export const getNutritionFromBarcode = async (barcode: string): Promise<Food[]> => {
-    try {
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'getNutritionFromBarcode',
-                payload: { barcode },
-                modelName: 'gemini-3-flash-preview',
-            }),
-        });
+  try {
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'getNutritionFromBarcode', 
+        payload: { barcode } 
+      }),
+    });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido na busca por código de barras.');
-        }
-
-        const data = await response.json();
-        const parsedData = JSON.parse(data.analysis);
-        return parsedData.map((item: any) => ({ ...item, id: crypto.randomUUID() }));
-    } catch (error) {
-        console.error("Error fetching nutrition from barcode:", error);
-        throw error;
-    }
+    const data = await safeFetchJson(response);
+    const foods = JSON.parse(data.analysis);
+    
+    return foods.map((f: any) => ({
+      ...f,
+      id: crypto.randomUUID(),
+      timestamp: Date.now()
+    }));
+  } catch (error: any) {
+    console.error("Erro ao buscar nutrição por código de barras:", error);
+    throw error;
+  }
 };
 
-// --- Funções do Coach e Recomendações ---
-
-export const getMotivationalMessage = async (userName: string, coach: any): Promise<string> => {
-    try {
-        const prompt = `Aja como um coach de saúde e fitness chamado ${coach.name}. O usuário se chama ${userName}. Escreva uma mensagem motivacional curta (máximo 2 frases) para o dashboard do app, incentivando o usuário a manter o foco em sua dieta e exercícios hoje. Seja empático, direto e inspirador. Não use emojis em excesso.`;
-        
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'getMotivationalMessage',
-                payload: { prompt },
-                modelName: 'gemini-3-flash-preview',
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido ao obter mensagem motivacional.');
-        }
-
-        const data = await response.json();
-        return data.analysis?.trim() || "A persistência é o caminho para o sucesso. Continue focado nas suas metas hoje!";
-    } catch (error) {
-        console.error("Error getting motivational message:", error);
-        throw error; // Propaga o erro
-    }
-};
-
-export const getMealRecommendations = async (userProfile: UserProfile, consumed: any): Promise<MealSuggestion[]> => {
-    try {
-        const prompt = `Com base no perfil do usuário (Meta: ${userProfile.goal}) e no que ele já consumiu hoje (${consumed.calories}kcal, P:${consumed.protein}g, C:${consumed.carbs}g, G:${consumed.fat}g), sugira 3 opções de refeições saudáveis (Café da Manhã, Almoço ou Jantar) para ajudá-lo a atingir suas metas diárias. Retorne um array JSON com cada objeto contendo as propriedades: mealCategory (string), reasoning (string), e food (objeto Food com name, calories, protein, carbs, fat, servingSize).`;
-        
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'getMealRecommendations',
-                payload: { prompt },
-                modelName: 'gemini-3-flash-preview',
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido nas recomendações de refeições.');
-        }
-
-        const data = await response.json();
-        return JSON.parse(data.analysis);
-    } catch (error) {
-        console.error("Error getting meal recommendations:", error);
-        throw error;
-    }
-};
-
-export const getRecipes = async (goal: string, preferences: string, userProfile: UserProfile): Promise<Recipe[]> => {
-    try {
-        const prompt = `Crie 3 receitas saudáveis e detalhadas para o objetivo: ${goal}. Preferências do usuário: ${preferences}. Nível de atividade: ${userProfile.activityLevel}. Retorne um array JSON com cada objeto contendo: id, name, description, category, timeInMinutes, totalCalories, totalProtein, totalCarbs, totalFat, imagePrompt (prompt em inglês para gerar imagem), ingredients (array de Food), instructions (array de strings).`;
-
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'getRecipes',
-                payload: { prompt },
-                modelName: 'gemini-3-flash-preview',
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido ao buscar receitas.');
-        }
-
-        const data = await response.json();
-        const recipes = JSON.parse(data.analysis);
-        return recipes.map((r: any) => ({ ...r, id: r.id || crypto.randomUUID() }));
-    } catch (error) {
-        console.error("Error getting recipes:", error);
-        throw error;
-    }
-};
-
-// --- Funções de Treino ---
-
-export const generateWorkout = async (userProfile: UserProfile, equipment: string[], duration: number, level: string): Promise<Workout | null> => {
-    try {
-        const prompt = `Crie uma rotina de treino personalizada para um usuário com objetivo de ${userProfile.goal}. Equipamentos disponíveis: ${equipment.join(', ')}. Duração: ${duration} minutos. Nível: ${level}. Retorne um objeto JSON seguindo o esquema: { name?: string, duration_min: number, intensity: string, calories_estimated: number, exercises: [{ id: string, name: string, sets: string, reps: string, rest_s: number, muscle_group?: string, image_prompt?: string }] }.`;
-
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                action: 'generateWorkout',
-                payload: { prompt },
-                modelName: 'gemini-3-pro-preview', // Pro para raciocínio de treino complexo
-            }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido ao gerar treino.');
-        }
-
-        const data = await response.json();
-        const workout = JSON.parse(data.analysis);
-        return { ...workout, id: crypto.randomUUID(), date: new Date().toISOString() };
-    } catch (error) {
-        console.error("Error generating workout:", error);
-        throw error;
-    }
-};
-
-/**
- * Envia um arquivo de imagem de ficha de treino para o backend para análise.
- * @param imageFile O objeto File da imagem.
- * @returns Uma Promise que resolve para um objeto Workout ou null.
- */
-export const parseWorkoutFromImage = async (imageFile: File): Promise<Workout | null> => {
-    try {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-
-        const response = await fetch('/api/parse-workout-image', {
-            method: 'POST',
-            body: formData,
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido na análise da imagem do treino.');
-        }
-
-        const data = await response.json();
-        const workout = JSON.parse(data.workout);
-        return { ...workout, id: crypto.randomUUID(), date: new Date().toISOString() };
-    } catch (error) {
-        console.error("Error parsing workout from image:", error);
-        throw error;
-    }
-};
-
-/**
- * Envia um arquivo de imagem para o backend para extrair nomes de exercícios.
- * @param imageFile O objeto File da imagem.
- * @returns Uma Promise que resolve para um array de strings com os nomes dos exercícios.
- */
+// FIX: Added getExercisesFromImage to extract workout names from photos.
 export const getExercisesFromImage = async (imageFile: File): Promise<string[]> => {
-    try {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        formData.append('prompt', `Liste apenas os nomes dos exercícios físicos identificados nesta imagem, separados por vírgula. Retorne apenas os nomes, sem frases adicionais. Exemplo: Agachamento, Supino, Flexão.`);
+  try {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('prompt', "Liste apenas os nomes dos exercícios físicos presentes nesta imagem, em português, separados por vírgula. Retorne apenas o texto puro.");
 
-        const response = await fetch('/api/extract-text-from-image', {
-            method: 'POST',
-            body: formData,
-        });
+    const response = await fetch('/api/extract-text-from-image', {
+      method: 'POST',
+      body: formData,
+    });
 
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido ao extrair exercícios da imagem.');
-        }
-        const data = await response.json();
-        // O backend agora retorna um campo 'analysis' com a string de texto.
-        return data.analysis?.split(',').map((s: string) => s.trim()).filter(Boolean) || [];
-    } catch (error) {
-        console.error("Error getting exercises from image:", error);
-        throw error;
-    }
+    const data = await safeFetchJson(response);
+    return data.analysis.split(',').map((s: string) => s.trim()).filter(Boolean);
+  } catch (error: any) {
+    console.error("Erro ao extrair exercícios da imagem:", error);
+    throw error;
+  }
 };
 
-// --- Geração de Imagens ---
+// FIX: Added getMealRecommendations for AI-powered personalized food suggestions.
+export const getMealRecommendations = async (userProfile: UserProfile, consumedTotals: { calories: number; protein: number; carbs: number; fat: number }): Promise<MealSuggestion[]> => {
+  try {
+    const prompt = `Com base nas metas: ${JSON.stringify(userProfile.goals)} e no consumo atual: ${JSON.stringify(consumedTotals)}, sugira 3 refeições curtas para hoje.`;
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'getMealRecommendations', 
+        payload: { prompt } 
+      }),
+    });
 
-/**
- * Envia um prompt para o backend para gerar uma imagem com IA.
- * @param prompt O prompt de texto para a geração da imagem.
- * @param type O tipo de imagem a ser gerada ('food' ou 'fitness').
- * @returns Uma Promise que resolve para a URL da imagem (base64 data URL) ou null.
- */
-export const generateAiImage = async (prompt: string, type: 'food' | 'fitness' = 'food'): Promise<string | null> => {
-    try {
-        const response = await fetch('/api/generate-ai-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, type }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Erro desconhecido na geração de imagem.');
-        }
-
-        const data = await response.json();
-        return data.imageUrl || null;
-    } catch (error) {
-        console.error("Image generation failed:", error);
-        throw error;
-    }
+    const data = await safeFetchJson(response);
+    return JSON.parse(data.analysis).map((s: any) => ({
+        ...s,
+        food: { ...s.food, id: crypto.randomUUID() }
+    }));
+  } catch (error: any) {
+    console.error("Erro ao obter recomendações de refeição:", error);
+    throw error;
+  }
 };
 
-export const generateExerciseImage = (prompt: string) => generateAiImage(prompt, 'fitness');
+// FIX: Added getRecipes to generate structured recipe data via Gemini.
+export const getRecipes = async (goal: string, preferences: string, userProfile: UserProfile): Promise<Recipe[]> => {
+  try {
+    const prompt = `Crie 3 receitas saudáveis para quem quer "${goal}". Preferências do usuário: "${preferences}". Perfil: ${JSON.stringify(userProfile)}.`;
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'getRecipes', 
+        payload: { prompt } 
+      }),
+    });
+
+    const data = await safeFetchJson(response);
+    return JSON.parse(data.analysis).map((r: any) => ({
+        ...r,
+        id: r.id || crypto.randomUUID()
+    }));
+  } catch (error: any) {
+    console.error("Erro ao obter receitas:", error);
+    throw error;
+  }
+};
+
+// FIX: Added generateAiImage to produce images using Gemini 2.5 Flash Image.
+export const generateAiImage = async (prompt: string, type: 'food' | 'fitness'): Promise<string> => {
+  try {
+    const response = await fetch('/api/generate-ai-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, type }),
+    });
+
+    const data = await safeFetchJson(response);
+    return data.imageUrl;
+  } catch (error: any) {
+    console.error("Erro ao gerar imagem AI:", error);
+    throw error;
+  }
+};
+
+// FIX: Added getMotivationalMessage for personalized coaching feedback.
+export const getMotivationalMessage = async (userName: string, coach: { name: string }): Promise<string> => {
+  try {
+    const prompt = `Você é o coach ${coach.name}. Dê uma dica de saúde curta e motivacional para ${userName}.`;
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'getMotivationalMessage', 
+        payload: { prompt } 
+      }),
+    });
+
+    const data = await safeFetchJson(response);
+    return data.analysis;
+  } catch (error: any) {
+    console.error("Erro ao obter mensagem motivacional:", error);
+    return "Mantenha o foco nos seus objetivos!";
+  }
+};
+
+// FIX: Added generateWorkout to create tailored fitness plans via Gemini.
+export const generateWorkout = async (userProfile: UserProfile, equipment: string[], duration: number, level: string): Promise<Workout> => {
+  try {
+    const prompt = `Crie um treino completo de ${duration} minutos, nível ${level}, usando: ${equipment.join(', ')}. Perfil: ${JSON.stringify(userProfile)}.`;
+    const response = await fetch('/api/text-gemini-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        action: 'generateWorkout', 
+        payload: { prompt } 
+      }),
+    });
+
+    const data = await safeFetchJson(response);
+    const workout = JSON.parse(data.analysis);
+    return {
+        ...workout,
+        id: crypto.randomUUID(),
+        date: new Date().toISOString()
+    };
+  } catch (error: any) {
+    console.error("Erro ao gerar treino:", error);
+    throw error;
+  }
+};
+
+// FIX: Added parseWorkoutFromImage to scan workout sheets from photos.
+export const parseWorkoutFromImage = async (imageFile: File): Promise<Workout> => {
+  try {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+
+    const response = await fetch('/api/parse-workout-image', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await safeFetchJson(response);
+    const workout = JSON.parse(data.workout);
+    return {
+        ...workout,
+        id: crypto.randomUUID(),
+        date: new Date().toISOString()
+    };
+  } catch (error: any) {
+    console.error("Erro ao ler ficha de treino:", error);
+    throw error;
+  }
+};
+
+// FIX: Added generateExerciseImage for visual exercise demonstrations.
+export const generateExerciseImage = async (prompt: string): Promise<string> => {
+    return generateAiImage(prompt, 'fitness');
+};
