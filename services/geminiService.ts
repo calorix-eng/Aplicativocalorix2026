@@ -1,274 +1,212 @@
 
-// services/geminiService.ts
 import { Food, UserProfile, MealSuggestion, Recipe, Workout } from '../types';
 
 /**
- * Utilitário para validar e parsear a resposta da API com segurança total.
- * Evita o erro "Unexpected end of JSON input".
+ * Utilitário para garantir que a resposta do servidor seja tratada com segurança.
+ * Previne o erro "Unexpected token < at position 0" (HTML retornado em vez de JSON).
  */
-async function safeFetchJson(response: Response) {
+async function safeParseResponse(response: Response) {
   const text = await response.text();
   try {
-    const json = JSON.parse(text);
+    const data = JSON.parse(text);
     if (!response.ok) {
-      throw new Error(json.error || `Erro na API (${response.status})`);
+      throw new Error(data.error || `Erro do servidor (${response.status})`);
     }
-    return json;
-  } catch (err) {
-    console.error("Resposta não-JSON detectada:", text);
-    throw new Error(`O servidor retornou uma resposta inválida. Status: ${response.status}`);
+    return data;
+  } catch (e) {
+    console.error("Falha ao parsear resposta como JSON. Recebido:", text.substring(0, 100));
+    throw new Error("O servidor retornou uma resposta inválida. Tente novamente mais tarde.");
   }
 }
 
 /**
- * Analisa uma imagem enviada via câmera ou galeria.
- * @param imageFile Objeto File do navegador (input type="file" ou capture)
+ * Envia imagem para análise nutricional via Proxy Serverless.
  */
 export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> => {
-  // 1. Proteção de tamanho (Vercel Serverless tem limite de payload)
-  const MAX_SIZE = 3.5 * 1024 * 1024; // 3.5MB para segurança
-  if (imageFile.size > MAX_SIZE) {
-    throw new Error("A imagem é muito grande. Tente tirar uma foto mais simples ou reduza a qualidade.");
+  // 1. Validação de Tamanho (Limite Vercel ~4.5MB, usamos 3MB para segurança)
+  const MAX_FILE_SIZE = 3 * 1024 * 1024; 
+  if (imageFile.size > MAX_FILE_SIZE) {
+    throw new Error("A imagem é muito grande (máx 3MB). Tente tirar uma foto com menor resolução.");
   }
 
   try {
-    // 2. Construção do FormData (Padrão para envio de arquivos)
+    // 2. Preparação do FormData
     const formData = new FormData();
     formData.append('image', imageFile);
 
-    // 3. Chamada para o SEU backend (Proxy)
+    // 3. Chamada ao backend (Proxy Seguro)
     const response = await fetch('/api/analyze-image', {
       method: 'POST',
       body: formData,
-      // IMPORTANTE: Não defina Content-Type manualmente ao usar FormData!
-      // O navegador fará isso automaticamente incluindo o boundary.
+      // IMPORTANTE: Não defina headers de Content-Type manualmente aqui, 
+      // o navegador fará isso automaticamente com o boundary correto.
     });
 
-    const data = await safeFetchJson(response);
+    const data = await safeParseResponse(response);
+
+    // O Gemini retorna o JSON como uma string dentro do campo 'analysis'
+    if (!data.analysis) {
+        throw new Error("A análise da IA veio vazia.");
+    }
+
+    const parsedFoods = JSON.parse(data.analysis);
     
-    // O Gemini via backend retorna o JSON da análise no campo 'analysis'
-    const foods = JSON.parse(data.analysis); 
-    
-    return foods.map((f: any) => ({
+    return parsedFoods.map((f: any) => ({
       ...f,
       id: crypto.randomUUID(),
       timestamp: Date.now()
     }));
+
   } catch (error: any) {
-    console.error("Erro crítico no processamento da imagem:", error);
+    console.error("Erro no fluxo de análise de imagem:", error.message);
+    // Repassa o erro para a UI tratar sem quebrar o app
     throw error;
   }
 };
 
-// FIX: Added getNutritionFromText to handle manual search queries using Gemini.
+// ... outras funções de texto seguem o mesmo padrão de safeParseResponse
 export const getNutritionFromText = async (query: string): Promise<Food[]> => {
-  try {
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'getNutritionFromText', 
-        payload: { query: `Forneça os dados nutricionais (calorias, proteína, carboidratos, gordura) para: "${query}". Retorne um array JSON.` } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    const foods = JSON.parse(data.analysis);
-    
-    return foods.map((f: any) => ({
-      ...f,
-      id: crypto.randomUUID(),
-      timestamp: Date.now()
-    }));
-  } catch (error: any) {
-    console.error("Erro ao buscar nutrição por texto:", error);
-    throw error;
-  }
+    try {
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getNutritionFromText', payload: { query } }),
+        });
+        const data = await safeParseResponse(response);
+        return JSON.parse(data.analysis).map((f: any) => ({ ...f, id: crypto.randomUUID() }));
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added getNutritionFromBarcode to process scanned product barcodes using Gemini.
+// FIX: Added getNutritionFromBarcode to fix error in AddFoodModal.tsx
 export const getNutritionFromBarcode = async (barcode: string): Promise<Food[]> => {
-  try {
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'getNutritionFromBarcode', 
-        payload: { barcode } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    const foods = JSON.parse(data.analysis);
-    
-    return foods.map((f: any) => ({
-      ...f,
-      id: crypto.randomUUID(),
-      timestamp: Date.now()
-    }));
-  } catch (error: any) {
-    console.error("Erro ao buscar nutrição por código de barras:", error);
-    throw error;
-  }
+    try {
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getNutritionFromBarcode', payload: { barcode } }),
+        });
+        const data = await safeParseResponse(response);
+        return JSON.parse(data.analysis).map((f: any) => ({ ...f, id: crypto.randomUUID() }));
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added getExercisesFromImage to extract workout names from photos.
+// FIX: Added getExercisesFromImage to fix error in ProfileModal.tsx
 export const getExercisesFromImage = async (imageFile: File): Promise<string[]> => {
-  try {
-    const formData = new FormData();
-    formData.append('image', imageFile);
-    formData.append('prompt', "Liste apenas os nomes dos exercícios físicos presentes nesta imagem, em português, separados por vírgula. Retorne apenas o texto puro.");
-
-    const response = await fetch('/api/extract-text-from-image', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await safeFetchJson(response);
-    return data.analysis.split(',').map((s: string) => s.trim()).filter(Boolean);
-  } catch (error: any) {
-    console.error("Erro ao extrair exercícios da imagem:", error);
-    throw error;
-  }
+    try {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        formData.append('prompt', 'Identifique apenas os nomes dos exercícios presentes nesta imagem de ficha de treino. Retorne uma lista de nomes separados por vírgula, sem explicações extras.');
+        const response = await fetch('/api/extract-text-from-image', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await safeParseResponse(response);
+        const text = data.analysis;
+        return text.split(',').map((s: string) => s.trim()).filter(Boolean);
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added getMealRecommendations for AI-powered personalized food suggestions.
-export const getMealRecommendations = async (userProfile: UserProfile, consumedTotals: { calories: number; protein: number; carbs: number; fat: number }): Promise<MealSuggestion[]> => {
-  try {
-    const prompt = `Com base nas metas: ${JSON.stringify(userProfile.goals)} e no consumo atual: ${JSON.stringify(consumedTotals)}, sugira 3 refeições curtas para hoje.`;
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'getMealRecommendations', 
-        payload: { prompt } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    return JSON.parse(data.analysis).map((s: any) => ({
-        ...s,
-        food: { ...s.food, id: crypto.randomUUID() }
-    }));
-  } catch (error: any) {
-    console.error("Erro ao obter recomendações de refeição:", error);
-    throw error;
-  }
+// FIX: Added getMealRecommendations to fix error in MealRecommendations.tsx
+export const getMealRecommendations = async (userProfile: UserProfile, consumedTotals: any): Promise<MealSuggestion[]> => {
+    try {
+        const prompt = `Com base no perfil do usuário (Objetivo: ${userProfile.goal}, Peso: ${userProfile.weight}kg) e no que ele já consumiu hoje (${consumedTotals.calories}kcal, P:${consumedTotals.protein}g, C:${consumedTotals.carbs}g, F:${consumedTotals.fat}g), sugira 3 opções de refeições saudáveis (nome, calorias, macros e porção) que ajudem a atingir as metas diárias (${userProfile.goals.calories}kcal). Retorne em JSON.`;
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getMealRecommendations', payload: { prompt } }),
+        });
+        const data = await safeParseResponse(response);
+        return JSON.parse(data.analysis);
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added getRecipes to generate structured recipe data via Gemini.
+// FIX: Added getRecipes to fix error in RecipesDashboard.tsx
 export const getRecipes = async (goal: string, preferences: string, userProfile: UserProfile): Promise<Recipe[]> => {
-  try {
-    const prompt = `Crie 3 receitas saudáveis para quem quer "${goal}". Preferências do usuário: "${preferences}". Perfil: ${JSON.stringify(userProfile)}.`;
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'getRecipes', 
-        payload: { prompt } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    return JSON.parse(data.analysis).map((r: any) => ({
-        ...r,
-        id: r.id || crypto.randomUUID()
-    }));
-  } catch (error: any) {
-    console.error("Erro ao obter receitas:", error);
-    throw error;
-  }
+    try {
+        const prompt = `Gere 3 receitas saudáveis para quem tem o objetivo de ${goal}. Preferências do usuário: ${preferences || 'nenhuma'}. Considere que o usuário tem ${userProfile.age} anos e pesa ${userProfile.weight}kg. Retorne um array de objetos JSON com id, name, description, category, timeInMinutes, totalCalories, totalProtein, totalCarbs, totalFat, imagePrompt (em inglês), ingredients (array de objetos Food) e instructions (array de strings).`;
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getRecipes', payload: { prompt } }),
+        });
+        const data = await safeParseResponse(response);
+        return JSON.parse(data.analysis);
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added generateAiImage to produce images using Gemini 2.5 Flash Image.
-export const generateAiImage = async (prompt: string, type: 'food' | 'fitness'): Promise<string> => {
-  try {
-    const response = await fetch('/api/generate-ai-image', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, type }),
-    });
-
-    const data = await safeFetchJson(response);
-    return data.imageUrl;
-  } catch (error: any) {
-    console.error("Erro ao gerar imagem AI:", error);
-    throw error;
-  }
+// FIX: Added generateAiImage to fix error in RecipesDashboard.tsx and RecipeDetailModal.tsx
+export const generateAiImage = async (prompt: string, type: 'food' | 'exercise'): Promise<string> => {
+    try {
+        const response = await fetch('/api/generate-ai-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, type }),
+        });
+        const data = await safeParseResponse(response);
+        return data.imageUrl;
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added getMotivationalMessage for personalized coaching feedback.
-export const getMotivationalMessage = async (userName: string, coach: { name: string }): Promise<string> => {
-  try {
-    const prompt = `Você é o coach ${coach.name}. Dê uma dica de saúde curta e motivacional para ${userName}.`;
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'getMotivationalMessage', 
-        payload: { prompt } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    return data.analysis;
-  } catch (error: any) {
-    console.error("Erro ao obter mensagem motivacional:", error);
-    return "Mantenha o foco nos seus objetivos!";
-  }
+// FIX: Added getMotivationalMessage to fix error in MotivationalCoach.tsx
+export const getMotivationalMessage = async (userName: string, coach: any): Promise<string> => {
+    try {
+        const prompt = `Você é o coach ${coach.name}. O usuário se chama ${userName}. Dê uma mensagem motivacional curta e direta para ele continuar focado na dieta e nos treinos hoje. Use um tom encorajador.`;
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'getMotivationalMessage', payload: { prompt } }),
+        });
+        const data = await safeParseResponse(response);
+        return data.analysis;
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added generateWorkout to create tailored fitness plans via Gemini.
+// FIX: Added generateWorkout to fix error in WorkoutDashboard.tsx
 export const generateWorkout = async (userProfile: UserProfile, equipment: string[], duration: number, level: string): Promise<Workout> => {
-  try {
-    const prompt = `Crie um treino completo de ${duration} minutos, nível ${level}, usando: ${equipment.join(', ')}. Perfil: ${JSON.stringify(userProfile)}.`;
-    const response = await fetch('/api/text-gemini-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        action: 'generateWorkout', 
-        payload: { prompt } 
-      }),
-    });
-
-    const data = await safeFetchJson(response);
-    const workout = JSON.parse(data.analysis);
-    return {
-        ...workout,
-        id: crypto.randomUUID(),
-        date: new Date().toISOString()
-    };
-  } catch (error: any) {
-    console.error("Erro ao gerar treino:", error);
-    throw error;
-  }
+    try {
+        const prompt = `Gere um treino personalizado para o usuário ${userProfile.name} (Nível: ${level}). Equipamentos disponíveis: ${equipment.join(', ')}. Duração desejada: ${duration} minutos. O objetivo dele é ${userProfile.goal}. Retorne um objeto JSON de treino com id, name, duration_min, intensity, calories_estimated e um array de exercises (id, name, sets, reps, rest_s, muscle_group, image_prompt).`;
+        const response = await fetch('/api/text-gemini-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'generateWorkout', payload: { prompt } }),
+        });
+        const data = await safeParseResponse(response);
+        return JSON.parse(data.analysis);
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added parseWorkoutFromImage to scan workout sheets from photos.
+// FIX: Added parseWorkoutFromImage to fix error in WorkoutDashboard.tsx
 export const parseWorkoutFromImage = async (imageFile: File): Promise<Workout> => {
-  try {
-    const formData = new FormData();
-    formData.append('image', imageFile);
-
-    const response = await fetch('/api/parse-workout-image', {
-      method: 'POST',
-      body: formData,
-    });
-
-    const data = await safeFetchJson(response);
-    const workout = JSON.parse(data.workout);
-    return {
-        ...workout,
-        id: crypto.randomUUID(),
-        date: new Date().toISOString()
-    };
-  } catch (error: any) {
-    console.error("Erro ao ler ficha de treino:", error);
-    throw error;
-  }
+    try {
+        const formData = new FormData();
+        formData.append('image', imageFile);
+        const response = await fetch('/api/parse-workout-image', {
+            method: 'POST',
+            body: formData,
+        });
+        const data = await safeParseResponse(response);
+        // api/parse-workout-image returns { workout: string (JSON) }
+        return JSON.parse(data.workout);
+    } catch (error: any) {
+        throw error;
+    }
 };
 
-// FIX: Added generateExerciseImage for visual exercise demonstrations.
-export const generateExerciseImage = async (prompt: string): Promise<string> => {
-    return generateAiImage(prompt, 'fitness');
-};
+// FIX: Added generateExerciseImage to fix error in WorkoutDashboard.tsx
+export const generateExerciseImage = (prompt: string) => generateAiImage(prompt, 'exercise');

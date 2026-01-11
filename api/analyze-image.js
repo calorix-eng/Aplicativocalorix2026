@@ -1,10 +1,10 @@
 
-// api/analyze-image.js
 import { GoogleGenAI, Type } from "@google/genai";
 import formidable from "formidable";
 import fs from "fs";
 
-// CONFIGURAÇÃO OBRIGATÓRIA DA VERCEL: Desabilita o parser padrão para aceitar streams de arquivos
+// CONFIGURAÇÃO CRÍTICA DA VERCEL
+// Desabilita o parser automático para que o Formidable possa ler o stream da imagem
 export const config = {
   api: {
     bodyParser: false,
@@ -12,41 +12,50 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // 1. Filtro de Método
+  // 1. Garantir que a resposta seja SEMPRE JSON
+  res.setHeader('Content-Type', 'application/json');
+
+  // 2. Filtro de Método
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Método não permitido" });
   }
 
-  // 2. Validação da Chave
-  // FIX: Using API_KEY as per guidelines.
+  // 3. Validação de Configuração
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error("API_KEY não configurada no ambiente da Vercel!");
-    return res.status(500).json({ error: "Configuração do servidor incompleta (API KEY)." });
+    console.error("ERRO: API_KEY não encontrada no ambiente.");
+    return res.status(500).json({ error: "Configuração do servidor incompleta (API_KEY)" });
   }
 
-  // 3. Parsing do FormData usando Formidable
+  // 4. Configurar Formidable para ler a imagem
   const form = formidable({
-    maxFileSize: 4 * 1024 * 1024, // Limite de 4MB
+    maxFileSize: 4 * 1024 * 1024, // Limite interno de 4MB
+    keepExtensions: true,
   });
 
   try {
-    const [fields, files] = await form.parse(req);
-    const imageFile = files.image?.[0];
+    // 5. Parsear o FormData
+    const [fields, files] = await new Promise((resolve, reject) => {
+      form.parse(req, (err, fields, files) => {
+        if (err) reject(err);
+        resolve([fields, files]);
+      });
+    });
 
+    const imageFile = files.image?.[0];
     if (!imageFile) {
-      return res.status(400).json({ error: "Arquivo de imagem não detectado no envio." });
+      return res.status(400).json({ error: "Nenhuma imagem foi enviada" });
     }
 
-    // 4. Conversão para Base64 (O Gemini exige esse formato no Node)
-    const imageData = fs.readFileSync(imageFile.filepath);
-    const base64Data = imageData.toString("base64");
+    // 6. Converter imagem para Base64
+    const imageBuffer = fs.readFileSync(imageFile.filepath);
+    const base64Image = imageBuffer.toString("base64");
     const mimeType = imageFile.mimetype || "image/jpeg";
 
-    // 5. Inicialização da IA
+    // 7. Inicializar Gemini
     const ai = new GoogleGenAI({ apiKey });
     
-    // Schema de Resposta para garantir JSON válido da IA
+    // Schema para garantir JSON válido da IA
     const responseSchema = {
       type: Type.ARRAY,
       items: {
@@ -63,37 +72,44 @@ export default async function handler(req, res) {
       },
     };
 
-    // 6. Chamada ao Gemini 3 Flash usando o formato de parts correto
-    // FIX: Using recommended generateContent parameters and gemini-3-flash-preview.
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: {
-        parts: [
-          { text: "Analise a comida nesta imagem. Estime calorias e macros. Retorne estritamente um array JSON." },
-          { inlineData: { data: base64Data, mimeType } }
-        ]
-      },
+    // 8. Chamar Gemini 3 Flash no formato correto
+    const result = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: "Analise a comida nesta imagem. Identifique os itens e forneça calorias, proteínas, carboidratos e gorduras. Retorne APENAS o JSON no formato especificado." },
+            { inlineData: { data: base64Image, mimeType: mimeType } }
+          ]
+        }
+      ],
       config: {
         responseMimeType: "application/json",
-        responseSchema: responseSchema
+        responseSchema: responseSchema,
       }
     });
 
-    // 7. Retorno Sempre em JSON
-    // FIX: Accessing .text property directly.
+    // 9. Retorno de Sucesso
     return res.status(200).json({ 
-      success: true,
-      analysis: response.text 
+      success: true, 
+      analysis: result.text 
     });
 
   } catch (error) {
-    console.error("Erro no processamento da IA:", error);
+    console.error("ERRO NO BACKEND:", error);
     
-    // Garantia de que NUNCA retornaremos HTML em caso de erro
-    return res.status(500).json({ 
-      success: false,
-      error: error.message || "Falha interna ao analisar imagem.",
-      details: "Verifique o log da Vercel para mais informações."
+    // Fallback de Erro: Garante que a resposta seja JSON
+    const statusCode = error.code === 'LIMIT_FILE_SIZE' ? 413 : 500;
+    const message = statusCode === 413 
+      ? "Imagem muito grande para processamento" 
+      : "Falha ao processar imagem no servidor";
+
+    return res.status(statusCode).json({ 
+      error: message,
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  } finally {
+    // Limpeza opcional de arquivos temporários (a Vercel limpa automaticamente no fim da execução, mas é boa prática)
   }
 }
