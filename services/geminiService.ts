@@ -3,6 +3,7 @@
 // IMPORTANTE: O frontend NÃO inicializa mais GoogleGenAI diretamente nem acessa API_KEY.
 // A SDK do Gemini (@google/genai) NÃO DEVE ser importada neste arquivo do frontend.
 import { Food, Micronutrient, MealSuggestion, UserProfile, Recipe, Workout } from '../types';
+import { fileToBase64 } from '../utils/fileUtils'; // Adicionado para converter File para Base64 quando necessário
 
 // O 'Type' do @google/genai não é mais importado aqui.
 // As definições de esquema são apenas para referência de tipo no TypeScript, não para uso em runtime.
