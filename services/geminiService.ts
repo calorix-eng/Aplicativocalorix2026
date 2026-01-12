@@ -1,212 +1,195 @@
 
-import { Food, UserProfile, MealSuggestion, Recipe, Workout } from '../types';
+import { Food } from '../types';
 
 /**
- * Utilitário para garantir que a resposta do servidor seja tratada com segurança.
- * Previne o erro "Unexpected token < at position 0" (HTML retornado em vez de JSON).
+ * FUNÇÃO DE DIAGNÓSTICO: Testa se a API da Vercel está viva e retornando JSON.
+ * Se esta função logar HTML, o erro é de rota/infraestrutura na Vercel.
  */
-async function safeParseResponse(response: Response) {
-  const text = await response.text();
+export const testApiHealth = async () => {
+  console.log("Iniciando teste de saúde da API...");
   try {
-    const data = JSON.parse(text);
-    if (!response.ok) {
-      throw new Error(data.error || `Erro do servidor (${response.status})`);
-    }
-    return data;
-  } catch (e) {
-    console.error("Falha ao parsear resposta como JSON. Recebido:", text.substring(0, 100));
-    throw new Error("O servidor retornou uma resposta inválida. Tente novamente mais tarde.");
-  }
-}
-
-/**
- * Envia imagem para análise nutricional via Proxy Serverless.
- */
-export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> => {
-  // 1. Validação de Tamanho (Limite Vercel ~4.5MB, usamos 3MB para segurança)
-  const MAX_FILE_SIZE = 3 * 1024 * 1024; 
-  if (imageFile.size > MAX_FILE_SIZE) {
-    throw new Error("A imagem é muito grande (máx 3MB). Tente tirar uma foto com menor resolução.");
-  }
-
-  try {
-    // 2. Preparação do FormData
-    const formData = new FormData();
-    formData.append('image', imageFile);
-
-    // 3. Chamada ao backend (Proxy Seguro)
-    const response = await fetch('/api/analyze-image', {
-      method: 'POST',
-      body: formData,
-      // IMPORTANTE: Não defina headers de Content-Type manualmente aqui, 
-      // o navegador fará isso automaticamente com o boundary correto.
-    });
-
-    const data = await safeParseResponse(response);
-
-    // O Gemini retorna o JSON como uma string dentro do campo 'analysis'
-    if (!data.analysis) {
-        throw new Error("A análise da IA veio vazia.");
-    }
-
-    const parsedFoods = JSON.parse(data.analysis);
+    const response = await fetch('/api/analyze-image', { method: 'POST' });
+    const rawText = await response.text();
     
-    return parsedFoods.map((f: any) => ({
-      ...f,
-      id: crypto.randomUUID(),
-      timestamp: Date.now()
-    }));
+    console.log("Status da Resposta:", response.status);
+    console.log("Conteúdo Bruto Recebido:", rawText);
 
+    try {
+      const json = JSON.parse(rawText);
+      console.log("JSON Parseado com Sucesso:", json);
+      return json;
+    } catch (parseError) {
+      console.error("ERRO CRÍTICO: O servidor retornou algo que não é JSON!");
+      throw new Error(`Resposta inválida (Não-JSON). Verifique o console.`);
+    }
   } catch (error: any) {
-    console.error("Erro no fluxo de análise de imagem:", error.message);
-    // Repassa o erro para a UI tratar sem quebrar o app
+    console.error("Falha na comunicação com /api/analyze-image:", error);
     throw error;
   }
 };
 
-// ... outras funções de texto seguem o mesmo padrão de safeParseResponse
+// Helper for proxy calls to text-gemini-proxy
+const fetchGeminiProxy = async (action: string, payload: any, modelName?: string) => {
+  const response = await fetch('/api/text-gemini-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, payload, modelName }),
+  });
+  
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || 'Erro na comunicação com a IA');
+  }
+  
+  return await response.json();
+};
+
+/**
+ * Wrapper de produção que agora utiliza o fluxo de diagnóstico.
+ */
+export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> => {
+  // Primeiro, validamos se a API está funcionando
+  await testApiHealth();
+
+  const formData = new FormData();
+  formData.append('image', imageFile);
+  formData.append('prompt', 'Analise esta imagem de comida e extraia uma lista de alimentos com calorias, proteínas, carboidratos e gorduras. Retorne um array JSON no formato: [{"name": "nome", "calories": 100, "protein": 10, "carbs": 20, "fat": 5, "servingSize": "100g", "id": "uuid"}].');
+
+  try {
+    const response = await fetch('/api/extract-text-from-image', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) return [];
+    const data = await response.json();
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao analisar imagem de comida:", err);
+    return [];
+  }
+};
+
+// Funções de fallback agora implementadas para chamar o backend
 export const getNutritionFromText = async (query: string): Promise<Food[]> => {
-    try {
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getNutritionFromText', payload: { query } }),
-        });
-        const data = await safeParseResponse(response);
-        return JSON.parse(data.analysis).map((f: any) => ({ ...f, id: crypto.randomUUID() }));
-    } catch (error: any) {
-        throw error;
-    }
+  try {
+    const data = await fetchGeminiProxy('getNutritionFromText', { query });
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao obter nutrição por texto:", err);
+    return [];
+  }
 };
 
-// FIX: Added getNutritionFromBarcode to fix error in AddFoodModal.tsx
 export const getNutritionFromBarcode = async (barcode: string): Promise<Food[]> => {
-    try {
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getNutritionFromBarcode', payload: { barcode } }),
-        });
-        const data = await safeParseResponse(response);
-        return JSON.parse(data.analysis).map((f: any) => ({ ...f, id: crypto.randomUUID() }));
-    } catch (error: any) {
-        throw error;
-    }
+  try {
+    const data = await fetchGeminiProxy('getNutritionFromBarcode', { barcode });
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao obter nutrição por código de barras:", err);
+    return [];
+  }
 };
 
-// FIX: Added getExercisesFromImage to fix error in ProfileModal.tsx
-export const getExercisesFromImage = async (imageFile: File): Promise<string[]> => {
-    try {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        formData.append('prompt', 'Identifique apenas os nomes dos exercícios presentes nesta imagem de ficha de treino. Retorne uma lista de nomes separados por vírgula, sem explicações extras.');
-        const response = await fetch('/api/extract-text-from-image', {
-            method: 'POST',
-            body: formData,
-        });
-        const data = await safeParseResponse(response);
-        const text = data.analysis;
-        return text.split(',').map((s: string) => s.trim()).filter(Boolean);
-    } catch (error: any) {
-        throw error;
-    }
+export const getExercisesFromImage = async (file: File): Promise<string[]> => {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('prompt', 'Identifique os exercícios físicos sendo realizados ou listados nesta imagem. Retorne apenas uma lista de nomes de exercícios separados por vírgula.');
+
+  try {
+    const response = await fetch('/api/extract-text-from-image', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.analysis.split(',').map((s: string) => s.trim()).filter(Boolean);
+  } catch (err) {
+    console.error("Erro ao extrair exercícios da imagem:", err);
+    return [];
+  }
 };
 
-// FIX: Added getMealRecommendations to fix error in MealRecommendations.tsx
-export const getMealRecommendations = async (userProfile: UserProfile, consumedTotals: any): Promise<MealSuggestion[]> => {
-    try {
-        const prompt = `Com base no perfil do usuário (Objetivo: ${userProfile.goal}, Peso: ${userProfile.weight}kg) e no que ele já consumiu hoje (${consumedTotals.calories}kcal, P:${consumedTotals.protein}g, C:${consumedTotals.carbs}g, F:${consumedTotals.fat}g), sugira 3 opções de refeições saudáveis (nome, calorias, macros e porção) que ajudem a atingir as metas diárias (${userProfile.goals.calories}kcal). Retorne em JSON.`;
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getMealRecommendations', payload: { prompt } }),
-        });
-        const data = await safeParseResponse(response);
-        return JSON.parse(data.analysis);
-    } catch (error: any) {
-        throw error;
-    }
+export const getMealRecommendations = async (profile: any, totals: any): Promise<any[]> => {
+  try {
+    const prompt = `Com base no perfil do usuário: ${JSON.stringify(profile)} e no que ele já consumiu hoje (calorias: ${totals.calories}, proteínas: ${totals.protein}g, carbos: ${totals.carbs}g, gorduras: ${totals.fat}g), sugira refeições equilibradas para completar as metas do dia.`;
+    const data = await fetchGeminiProxy('getMealRecommendations', { prompt });
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao obter recomendações de refeição:", err);
+    return [];
+  }
 };
 
-// FIX: Added getRecipes to fix error in RecipesDashboard.tsx
-export const getRecipes = async (goal: string, preferences: string, userProfile: UserProfile): Promise<Recipe[]> => {
-    try {
-        const prompt = `Gere 3 receitas saudáveis para quem tem o objetivo de ${goal}. Preferências do usuário: ${preferences || 'nenhuma'}. Considere que o usuário tem ${userProfile.age} anos e pesa ${userProfile.weight}kg. Retorne um array de objetos JSON com id, name, description, category, timeInMinutes, totalCalories, totalProtein, totalCarbs, totalFat, imagePrompt (em inglês), ingredients (array de objetos Food) e instructions (array de strings).`;
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getRecipes', payload: { prompt } }),
-        });
-        const data = await safeParseResponse(response);
-        return JSON.parse(data.analysis);
-    } catch (error: any) {
-        throw error;
-    }
+export const getRecipes = async (goal: any, pref: any, profile: any): Promise<any[]> => {
+  try {
+    const prompt = `Gere 3 receitas saudáveis para o objetivo de "${goal}". Preferências: ${pref}. Considere o seguinte perfil nutricional: ${JSON.stringify(profile.goals)}`;
+    const data = await fetchGeminiProxy('getRecipes', { prompt });
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao gerar receitas:", err);
+    return [];
+  }
 };
 
-// FIX: Added generateAiImage to fix error in RecipesDashboard.tsx and RecipeDetailModal.tsx
-export const generateAiImage = async (prompt: string, type: 'food' | 'exercise'): Promise<string> => {
-    try {
-        const response = await fetch('/api/generate-ai-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, type }),
-        });
-        const data = await safeParseResponse(response);
-        return data.imageUrl;
-    } catch (error: any) {
-        throw error;
-    }
+// FIX: Updated signature to accept 'type' argument to match usage in components (fixing "Expected 1 arguments, but got 2" error).
+export const generateAiImage = async (prompt: string, type?: string): Promise<string> => {
+  try {
+    const response = await fetch('/api/generate-ai-image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, type }),
+    });
+    if (!response.ok) return "";
+    const data = await response.json();
+    return data.imageUrl || "";
+  } catch (error) {
+    console.error("Erro ao gerar imagem com IA:", error);
+    return "";
+  }
 };
 
-// FIX: Added getMotivationalMessage to fix error in MotivationalCoach.tsx
-export const getMotivationalMessage = async (userName: string, coach: any): Promise<string> => {
-    try {
-        const prompt = `Você é o coach ${coach.name}. O usuário se chama ${userName}. Dê uma mensagem motivacional curta e direta para ele continuar focado na dieta e nos treinos hoje. Use um tom encorajador.`;
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'getMotivationalMessage', payload: { prompt } }),
-        });
-        const data = await safeParseResponse(response);
-        return data.analysis;
-    } catch (error: any) {
-        throw error;
-    }
+export const getMotivationalMessage = async (name: string, coach: any): Promise<string> => {
+  try {
+    const prompt = `Gere uma frase motivadora curta e impactante para o usuário ${name}. A mensagem deve parecer vir do coach ${coach.name}.`;
+    const data = await fetchGeminiProxy('getMotivationalMessage', { prompt });
+    return data.analysis;
+  } catch (err) {
+    console.error("Erro ao obter mensagem motivadora:", err);
+    return "Foco no progresso, não na perfeição!";
+  }
 };
 
-// FIX: Added generateWorkout to fix error in WorkoutDashboard.tsx
-export const generateWorkout = async (userProfile: UserProfile, equipment: string[], duration: number, level: string): Promise<Workout> => {
-    try {
-        const prompt = `Gere um treino personalizado para o usuário ${userProfile.name} (Nível: ${level}). Equipamentos disponíveis: ${equipment.join(', ')}. Duração desejada: ${duration} minutos. O objetivo dele é ${userProfile.goal}. Retorne um objeto JSON de treino com id, name, duration_min, intensity, calories_estimated e um array de exercises (id, name, sets, reps, rest_s, muscle_group, image_prompt).`;
-        const response = await fetch('/api/text-gemini-proxy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'generateWorkout', payload: { prompt } }),
-        });
-        const data = await safeParseResponse(response);
-        return JSON.parse(data.analysis);
-    } catch (error: any) {
-        throw error;
-    }
+export const generateWorkout = async (profile: any, eq: any, dur: any, lvl: any): Promise<any> => {
+  try {
+    const prompt = `Gere um treino personalizado. Objetivo: ${profile.goal}. Equipamentos: ${eq.join(', ')}. Duração: ${dur} minutos. Nível: ${lvl}.`;
+    const data = await fetchGeminiProxy('generateWorkout', { prompt });
+    return JSON.parse(data.analysis);
+  } catch (err) {
+    console.error("Erro ao gerar treino:", err);
+    return null;
+  }
 };
 
-// FIX: Added parseWorkoutFromImage to fix error in WorkoutDashboard.tsx
-export const parseWorkoutFromImage = async (imageFile: File): Promise<Workout> => {
-    try {
-        const formData = new FormData();
-        formData.append('image', imageFile);
-        const response = await fetch('/api/parse-workout-image', {
-            method: 'POST',
-            body: formData,
-        });
-        const data = await safeParseResponse(response);
-        // api/parse-workout-image returns { workout: string (JSON) }
-        return JSON.parse(data.workout);
-    } catch (error: any) {
-        throw error;
-    }
+export const parseWorkoutFromImage = async (file: File): Promise<any> => {
+  const formData = new FormData();
+  formData.append('image', file);
+  try {
+    const response = await fetch('/api/parse-workout-image', {
+      method: 'POST',
+      body: formData,
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return JSON.parse(data.workout);
+  } catch (err) {
+    console.error("Erro ao parsear treino da imagem:", err);
+    return null;
+  }
 };
 
-// FIX: Added generateExerciseImage to fix error in WorkoutDashboard.tsx
-export const generateExerciseImage = (prompt: string) => generateAiImage(prompt, 'exercise');
+// FIX: Changed to async to follow pattern and usage in components.
+export const generateExerciseImage = async (prompt: string) => {
+  return await generateAiImage(prompt, 'fitness');
+};
