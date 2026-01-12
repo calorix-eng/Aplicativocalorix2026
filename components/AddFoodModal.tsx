@@ -76,8 +76,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setError(null);
       setResults([]);
       try {
-        // Redimensionamento para 768px com qualidade 0.6 para velocidade máxima
-        const resizedFile = await resizeImageFile(file, 768, 768, 0.6); 
+        // Redimensionamento para 512px para upload ultra-rápido
+        const resizedFile = await resizeImageFile(file, 512, 512, 0.6); 
         setLoadingMessage("IA identificando alimentos...");
         const foundFoods = await getNutritionFromImage(resizedFile);
         processResults(foundFoods);
@@ -96,8 +96,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       setResults([]);
       try {
         const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'capture.jpeg');
-        // Redimensionamento para 768px com qualidade 0.6 para velocidade máxima
-        const resizedFile = await resizeImageFile(file, 768, 768, 0.6);
+        // Redimensionamento para 512px para upload ultra-rápido
+        const resizedFile = await resizeImageFile(file, 512, 512, 0.6);
         const foundFoods = await getNutritionFromImage(resizedFile);
         processResults(foundFoods);
       } catch (err: any) {
