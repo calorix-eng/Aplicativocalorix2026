@@ -4,7 +4,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import formidable from "formidable";
 import fs from "fs";
 
-// Desativa o body parser padrão para permitir upload de arquivos
 export const config = {
   api: {
     bodyParser: false,
@@ -12,7 +11,6 @@ export const config = {
 };
 
 export default async function handler(req, res) {
-  // Garantia absoluta de header JSON
   res.setHeader('Content-Type', 'application/json');
 
   if (req.method !== "POST") {
@@ -21,16 +19,15 @@ export default async function handler(req, res) {
 
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: "Configuração do servidor ausente (API_KEY)" });
+    return res.status(500).json({ error: "API_KEY ausente no servidor" });
   }
 
   const form = formidable({
-    maxFileSize: 4 * 1024 * 1024, // 4MB
+    maxFileSize: 4 * 1024 * 1024, 
     keepExtensions: true,
   });
 
   try {
-    // 1. Parsing do FormData
     const [fields, files] = await new Promise((resolve, reject) => {
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
@@ -40,17 +37,15 @@ export default async function handler(req, res) {
 
     const imageFile = files.image?.[0];
     if (!imageFile) {
-      return res.status(400).json({ error: "Nenhuma imagem recebida no servidor" });
+      return res.status(400).json({ error: "Imagem não recebida" });
     }
 
-    // 2. Preparação dos dados para o Gemini
     const imageBuffer = fs.readFileSync(imageFile.filepath);
     const base64Image = imageBuffer.toString("base64");
     const mimeType = imageFile.mimetype || "image/jpeg";
 
     const ai = new GoogleGenAI({ apiKey });
     
-    // Schema estrito para evitar respostas de texto livre da IA
     const responseSchema = {
       type: Type.ARRAY,
       items: {
@@ -67,14 +62,14 @@ export default async function handler(req, res) {
       },
     };
 
-    // 3. Chamada ao Gemini 3 Flash
+    // Chamada otimizada para o Gemini 3 Flash com o prompt aprimorado pelo usuário
     const result = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [
         {
           role: "user",
           parts: [
-            { text: "Identifique os alimentos nesta foto e retorne seus valores nutricionais aproximados em formato JSON." },
+            { text: "Analise cuidadosamente a imagem e identifique qualquer alimento visível, mesmo que esteja parcialmente visível ou em pequenas quantidades. Liste os alimentos identificados e forneça seus valores nutricionais aproximados. Retorne estritamente um array JSON estruturado." },
             { inlineData: { data: base64Image, mimeType: mimeType } }
           ]
         }
@@ -82,24 +77,19 @@ export default async function handler(req, res) {
       config: {
         responseMimeType: "application/json",
         responseSchema: responseSchema,
+        temperature: 0.1, // Deterministico e rápido
       }
     });
 
-    // 4. Retorno de Sucesso
     return res.status(200).json({ 
       success: true, 
       analysis: result.text 
     });
 
   } catch (error) {
-    console.error("CRITICAL SERVER ERROR:", error);
-    
-    // Fallback de erro amigável sempre em JSON
-    const status = error.code === 'LIMIT_FILE_SIZE' ? 413 : 500;
-    const message = status === 413 ? "A imagem enviada é muito pesada" : "Falha ao processar imagem no servidor";
-    
-    return res.status(status).json({ 
-      error: message,
+    console.error("Erro no servidor:", error);
+    return res.status(500).json({ 
+      error: "Falha na análise rápida",
       details: error.message 
     });
   }

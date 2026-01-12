@@ -17,7 +17,7 @@ import { BookOpenIcon } from './icons/BookOpenIcon';
 import { SparklesIcon } from './icons/SparklesIcon';
 import { PlusIcon } from './icons/PlusIcon';
 import EditLibraryFoodModal from './EditLibraryFoodModal';
-import { dataURLtoFile, resizeImageFile } from '../utils/fileUtils'; // Importar dataURLtoFile e resizeImageFile
+import { dataURLtoFile, resizeImageFile } from '../utils/fileUtils';
 
 interface AddFoodModalProps {
   mealName: string;
@@ -40,7 +40,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const [isScanning, setIsScanning] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   
-  // Library State
   const [librarySearch, setLibrarySearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todas');
   const [foodToEditInLib, setFoodToEditInLib] = useState<LibraryFood | null>(null);
@@ -62,8 +61,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const processResults = (foundFoods: Food[]) => {
     if (foundFoods.length === 0) {
       setError(activeTab === 'photo' 
-        ? "A IA não conseguiu identificar alimentos nesta foto. Tente tirar em um ângulo diferente." 
-        : "Nenhum resultado encontrado.");
+        ? "Não identificamos alimentos. Tente uma foto mais próxima." 
+        : "Nenhum resultado.");
     }
     setResults(foundFoods);
     setSelectedFoodIds(new Set(foundFoods.map(f => f.id)));
@@ -73,20 +72,17 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
       const file = e.target.files?.[0];
       if (!file) return;
       setIsLoading(true);
-      setLoadingMessage("Lendo foto da galeria...");
+      setLoadingMessage("Otimizando imagem...");
       setError(null);
       setResults([]);
       try {
-        // Redimensiona/comprime a imagem no frontend ANTES de enviar para o backend
-        // Isso ajuda a reduzir o tempo de upload e o payload para a função serverless.
-        const resizedFile = await resizeImageFile(file, 1024, 1024, 0.7); // Max 1024px, 70% quality
-        setLoadingMessage("IA Analisando Nutrientes...");
-        const foundFoods = await getNutritionFromImage(resizedFile); // Passa o objeto File diretamente
+        // Redimensionamento para 768px com qualidade 0.6 para velocidade máxima
+        const resizedFile = await resizeImageFile(file, 768, 768, 0.6); 
+        setLoadingMessage("IA identificando alimentos...");
+        const foundFoods = await getNutritionFromImage(resizedFile);
         processResults(foundFoods);
       } catch (err: any) {
-        console.error("Erro no processamento da imagem:", err);
-        // Erros do fetch no service layer já trazem uma mensagem amigável.
-        setError(err.message || 'Falha ao processar imagem. Tente novamente.');
+        setError(err.message || 'Falha ao processar.');
       } finally {
         setIsLoading(false);
       }
@@ -95,18 +91,17 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handlePhotoTaken = async ({ mimeType, data }: { mimeType: string; data: string }) => {
       setIsCameraOpen(false);
       setIsLoading(true);
-      setLoadingMessage("IA Analisando Alimentos...");
+      setLoadingMessage("Analisando foto...");
       setError(null);
       setResults([]);
       try {
-        // Converte o base64 da câmera para um objeto File.
-        // O resizeImageFile dentro da CameraCapture já faz um pré-redimensionamento.
-        const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'camera_capture.jpeg');
-        const foundFoods = await getNutritionFromImage(file); // Passa o objeto File diretamente
+        const file = dataURLtoFile(`data:${mimeType};base64,${data}`, 'capture.jpeg');
+        // Redimensionamento para 768px com qualidade 0.6 para velocidade máxima
+        const resizedFile = await resizeImageFile(file, 768, 768, 0.6);
+        const foundFoods = await getNutritionFromImage(resizedFile);
         processResults(foundFoods);
       } catch (err: any) {
-        console.error("Erro ao processar foto:", err);
-        setError(err.message || 'Falha ao processar foto. Tente novamente.');
+        setError(err.message || 'Falha ao processar.');
       } finally {
         setIsLoading(false);
       }
@@ -115,13 +110,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleSearch = async () => {
     if (!query) return;
     setIsLoading(true);
-    setLoadingMessage("Buscando dados...");
+    setLoadingMessage("Buscando...");
     setError(null);
     try {
       const foundFoods = await getNutritionFromText(query);
       processResults(foundFoods);
     } catch (e: any) {
-      setError(e.message || 'Falha ao buscar dados nutricionais.');
+      setError(e.message || 'Erro na busca.');
     } finally {
       setIsLoading(false);
     }
@@ -130,13 +125,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
   const handleBarcodeScan = async (barcode: string) => {
     setIsScanning(false);
     setIsLoading(true);
-    setLoadingMessage("Consultando código...");
+    setLoadingMessage("Consultando...");
     setError(null);
     try {
       const foundFoods = await getNutritionFromBarcode(barcode);
       processResults(foundFoods);
     } catch (e: any) {
-      setError(e.message || 'Produto não encontrado.');
+      setError('Produto não encontrado.');
     } finally {
       setIsLoading(false);
     }
@@ -157,10 +152,9 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     if (foodsToAdd.length > 0) onAddFoods(foodsToAdd);
   };
 
-  // Library CRUD
   const handleDeleteFromLibrary = (e: React.MouseEvent, foodId: string) => {
     e.stopPropagation();
-    if (window.confirm('Excluir este alimento da biblioteca?')) {
+    if (window.confirm('Excluir este alimento?')) {
         onUpdateFoodLibrary(foodLibrary.filter(f => f.id !== foodId));
     }
   };
@@ -205,7 +199,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4">
       <div className="bg-white dark:bg-dark-card rounded-t-[2.5rem] sm:rounded-3xl shadow-2xl w-full max-w-lg h-[95dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col overflow-hidden animate-slide-in-bottom">
         
-        {/* Header */}
         <div className="p-6 border-b dark:border-gray-800 flex justify-between items-center bg-white dark:bg-dark-card sticky top-0 z-10">
           <div>
             <h2 className="text-2xl font-black text-gray-900 dark:text-white leading-tight">{mealName}</h2>
@@ -216,17 +209,15 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           </button>
         </div>
         
-        {/* Tabs */}
         <div className="border-b dark:border-gray-800 bg-white dark:bg-dark-card shadow-sm">
           <div className="flex px-2">
             <TabButton tab="search" label="Busca" icon={<SearchIcon className="w-5 h-5" />} />
-            <TabButton tab="photo" label="Foto IA" icon={<CameraIcon className="w-5 h-5" />} />
+            <TabButton tab="photo" label="IA Rápida" icon={<CameraIcon className="w-5 h-5" />} />
             <TabButton tab="barcode" label="Scanner" icon={<BarcodeIcon />} />
             <TabButton tab="library" label="Livro" icon={<BookOpenIcon className="w-5 h-5"/>} />
           </div>
         </div>
 
-        {/* Content */}
         <div className="flex-grow overflow-y-auto scrollbar-hide px-6 py-6">
           {activeTab === 'search' && (
             <div className="space-y-4">
@@ -258,8 +249,8 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                         <SparklesIcon className="w-12 h-12" />
                     </div>
                     <div className="max-w-[280px] mx-auto">
-                        <h3 className="text-xl font-black text-gray-900 dark:text-white">Identificação por IA</h3>
-                        <p className="text-sm text-gray-500 mt-2">Nossa IA analisa cada detalhe do prato e estima os nutrientes para você.</p>
+                        <h3 className="text-xl font-black text-gray-900 dark:text-white">Identificação Instantânea</h3>
+                        <p className="text-sm text-gray-500 mt-2">Nossa IA Gemini Flash identifica o prato e estima porções e nutrientes em segundos.</p>
                     </div>
                     
                     <div className="flex flex-col gap-4 pt-4">
@@ -296,7 +287,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     </div>
                     <div className="max-w-[280px] mx-auto">
                         <h3 className="text-xl font-black">Scanner de Código</h3>
-                        <p className="text-sm text-gray-500 mt-2">Consulte informações de produtos industrializados brasileiros rapidamente.</p>
+                        <p className="text-sm text-gray-500 mt-2">Consulte informações de produtos industrializados rapidamente.</p>
                     </div>
                     <button onClick={() => setIsScanning(true)} className="bg-accent-green text-white p-6 rounded-3xl font-black text-lg hover:bg-green-600 transition w-full shadow-lg active:scale-95">
                         Ativar Câmera
@@ -307,7 +298,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
 
           {activeTab === 'library' && (
               <div className="space-y-6">
-                  {/* Search and Add */}
                   <div className="flex gap-2">
                     <div className="relative flex-grow">
                         <input
@@ -322,13 +312,11 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     <button 
                         onClick={() => setIsAddingNewToLib(true)}
                         className="bg-accent-blue text-white p-4 rounded-2xl shadow-lg hover:bg-blue-600 transition active:scale-95"
-                        title="Criar novo alimento"
                     >
                         <PlusIcon className="w-6 h-6" />
                     </button>
                   </div>
 
-                  {/* Category Pills */}
                   <div className="flex overflow-x-auto gap-2 pb-2 scrollbar-hide -mx-1">
                       {categories.map(cat => (
                           <button
@@ -341,7 +329,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                       ))}
                   </div>
 
-                  {/* List */}
                   <div className="grid grid-cols-1 gap-3 pb-20">
                       {filteredLibrary.length > 0 ? filteredLibrary.map(food => (
                           <div 
@@ -376,14 +363,13 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                       )) : (
                           <div className="text-center py-10 opacity-30">
                               <BookOpenIcon className="w-12 h-12 mx-auto mb-2" />
-                              <p className="font-black uppercase text-xs tracking-widest">Nada encontrado</p>
+                              <p className="font-black uppercase text-xs tracking-widest">Vazio</p>
                           </div>
                       )}
                   </div>
               </div>
           )}
 
-          {/* Loading and States */}
           {isLoading && (
               <div className="fixed inset-0 bg-white/95 dark:bg-dark-card/95 z-[110] flex flex-col items-center justify-center p-10 text-center animate-fade-in">
                 <div className="relative w-32 h-32 mb-8">
@@ -394,7 +380,7 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
                     </div>
                 </div>
                 <h3 className="text-2xl font-black mb-2 text-gray-900 dark:text-white uppercase tracking-tighter">{loadingMessage}</h3>
-                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">IA calorix está trabalhando</p>
+                <p className="text-gray-400 text-sm font-bold uppercase tracking-widest">IA calorix processando</p>
               </div>
           )}
 
@@ -404,7 +390,6 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
             </div>
           )}
 
-          {/* Result Search/Photo List */}
           {results.length > 0 && !isLoading && (
             <div className="mt-4 space-y-4 pb-24">
               <ul className="space-y-3">
@@ -431,24 +416,17 @@ const AddFoodModal: React.FC<AddFoodModalProps> = ({ mealName, onClose, onAddFoo
           )}
         </div>
 
-        {/* Footer Actions */}
         <div className="p-6 border-t dark:border-gray-800 bg-white/80 dark:bg-dark-card/80 backdrop-blur-md sticky bottom-0 z-20 pb-10 sm:pb-6">
             <button
                 onClick={handleAddSelected}
                 disabled={selectedFoodIds.size === 0 || isLoading}
                 className="w-full bg-accent-green text-white p-6 rounded-[2rem] font-black text-xl hover:bg-green-600 transition-all disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:text-gray-400 shadow-2xl active:scale-95 flex items-center justify-center space-x-3"
             >
-                {selectedFoodIds.size === 0 ? 'SELECIONE ITENS' : (
-                    <>
-                        <PlusIcon className="w-6 h-6" />
-                        <span>ADICIONAR {selectedFoodIds.size} ITEM(S)</span>
-                    </>
-                )}
+                {selectedFoodIds.size === 0 ? 'SELECIONE ITENS' : `ADICIONAR ${selectedFoodIds.size} ITEM(S)`}
             </button>
         </div>
       </div>
 
-      {/* Library Edit/Add Modals */}
       {(foodToEditInLib || isAddingNewToLib) && (
           <EditLibraryFoodModal 
             food={foodToEditInLib || undefined}

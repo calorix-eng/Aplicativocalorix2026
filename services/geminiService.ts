@@ -2,46 +2,44 @@
 import { Food } from '../types';
 
 /**
- * Função principal de análise de imagem.
- * Implementa segurança multicamadas para evitar erros de JSON inesperados.
+ * Analisa imagem de comida com foco em velocidade e detecção de detalhes.
  */
 export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> => {
-  // 1. Validação preventiva no cliente (Economiza largura de banda e evita 500 na Vercel)
-  const MAX_SIZE = 3.5 * 1024 * 1024; // 3.5MB
+  // Validação leve no cliente
+  const MAX_SIZE = 4 * 1024 * 1024;
   if (imageFile.size > MAX_SIZE) {
-    throw new Error("A imagem é muito grande. Use uma foto mais simples ou reduza a resolução.");
+    throw new Error("Imagem muito pesada. Tente reduzir a qualidade da foto.");
   }
 
   try {
     const formData = new FormData();
     formData.append('image', imageFile);
 
-    // 2. Chamada ao backend
+    // Timeout de 25 segundos para evitar espera infinita (Vercel tem limite de 30s)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
+
     const response = await fetch('/api/analyze-image', {
       method: 'POST',
       body: formData,
+      signal: controller.signal
     });
 
-    // 3. Leitura Resiliente (Lê como texto primeiro para detectar HTML de erro)
+    clearTimeout(timeoutId);
+
     const rawText = await response.text();
-    
     let data;
+    
     try {
         data = JSON.parse(rawText);
-    } catch (parseErr) {
-        console.error("Resposta não-JSON detectada:", rawText.substring(0, 100));
-        throw new Error("O servidor retornou um erro inesperado. Tente novamente em instantes.");
+    } catch (e) {
+        throw new Error("Erro na resposta da IA. Tente novamente.");
     }
 
     if (!response.ok) {
-      throw new Error(data.error || `Erro ${response.status}: Falha na comunicação.`);
+      throw new Error(data.error || "Erro ao processar imagem.");
     }
 
-    if (!data.analysis) {
-        throw new Error("A IA não retornou dados válidos.");
-    }
-
-    // 4. Parse final do conteúdo gerado pelo Gemini
     const parsedFoods = JSON.parse(data.analysis);
     
     return parsedFoods.map((f: any) => ({
@@ -51,12 +49,13 @@ export const getNutritionFromImage = async (imageFile: File): Promise<Food[]> =>
     }));
 
   } catch (error: any) {
-    console.error("Erro no serviço de nutrição por imagem:", error.message);
+    if (error.name === 'AbortError') {
+        throw new Error("A análise demorou demais. Verifique sua conexão.");
+    }
     throw error;
   }
 };
 
-// ... Restante das funções do serviço seguindo o mesmo padrão de fetch
 export const getNutritionFromText = async (query: string): Promise<Food[]> => {
   const response = await fetch('/api/text-gemini-proxy', {
     method: 'POST',
@@ -80,29 +79,27 @@ export const getNutritionFromBarcode = async (barcode: string): Promise<Food[]> 
 export const getExercisesFromImage = async (file: File): Promise<string[]> => {
   const formData = new FormData();
   formData.append('image', file);
-  formData.append('prompt', 'Identifique exercícios físicos. Retorne nomes separados por vírgula.');
+  formData.append('prompt', 'Liste exercícios por nome, separados por vírgula.');
   const response = await fetch('/api/extract-text-from-image', { method: 'POST', body: formData });
   const data = await response.json();
   return data.analysis.split(',').map((s: string) => s.trim()).filter(Boolean);
 };
 
 export const getMealRecommendations = async (profile: any, totals: any): Promise<any[]> => {
-  const prompt = `Sugira refeições para completar as metas do dia: ${JSON.stringify(totals)}`;
   const response = await fetch('/api/text-gemini-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'getMealRecommendations', payload: { prompt } }),
+    body: JSON.stringify({ action: 'getMealRecommendations', payload: { prompt: `Sugestões para metas: ${JSON.stringify(totals)}` } }),
   });
   const data = await response.json();
   return JSON.parse(data.analysis);
 };
 
 export const getRecipes = async (goal: any, pref: any, profile: any): Promise<any[]> => {
-  const prompt = `Gere 3 receitas para ${goal}. Preferências: ${pref}.`;
   const response = await fetch('/api/text-gemini-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'getRecipes', payload: { prompt } }),
+    body: JSON.stringify({ action: 'getRecipes', payload: { prompt: `Receitas para ${goal}, pref: ${pref}` } }),
   });
   const data = await response.json();
   return JSON.parse(data.analysis);
@@ -119,22 +116,20 @@ export const generateAiImage = async (prompt: string, type?: string): Promise<st
 };
 
 export const getMotivationalMessage = async (name: string, coach: any): Promise<string> => {
-  const prompt = `Frase motivadora para ${name} do coach ${coach.name}.`;
   const response = await fetch('/api/text-gemini-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'getMotivationalMessage', payload: { prompt } }),
+    body: JSON.stringify({ action: 'getMotivationalMessage', payload: { prompt: `Frase motivacional curta para ${name}` } }),
   });
   const data = await response.json();
   return data.analysis;
 };
 
 export const generateWorkout = async (profile: any, eq: any, dur: any, lvl: any): Promise<any> => {
-  const prompt = `Gere treino: ${lvl}, ${dur}min, equipamentos: ${eq.join(',')}`;
   const response = await fetch('/api/text-gemini-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action: 'generateWorkout', payload: { prompt } }),
+    body: JSON.stringify({ action: 'generateWorkout', payload: { prompt: `Treino ${lvl}, ${dur}min` } }),
   });
   const data = await response.json();
   return JSON.parse(data.analysis);
